@@ -208,7 +208,7 @@ def running_apps(paths):
 def verify_item(target, item, config):
     requirement = ('anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists '
                    f'and certificate leaf[subject.OU] = "{config["teamId"]}"')
-    run("/usr/bin/codesign", "--verify", "--strict", "--all-architectures", "-R", requirement, target)
+    run("/usr/bin/codesign", "--verify", "--strict", "--all-architectures", "-R", "=" + requirement, target)
     metadata = signing_metadata(target)
     details = metadata["details"]
     if (metadata["identifier"] != item.identifier or f'TeamIdentifier={config["teamId"]}\n' not in details
