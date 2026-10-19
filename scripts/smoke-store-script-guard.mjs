@@ -1,7 +1,7 @@
 // Source-only policy QA. Every website document is fixed inert HTML supplied
 // locally through Playwright routing. No real Store page, CRX, or account is used.
 import assert from 'node:assert/strict';
-import {access, mkdtemp, mkdir, readFile, realpath, writeFile, rm} from 'node:fs/promises';
+import {access, cp, mkdtemp, mkdir, readFile, realpath, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -50,12 +50,12 @@ async function projectRoot() {
 }
 const root = await projectRoot();
 const app = path.resolve(arguments_[1] ?? path.join(root, 'dist/Kumo.app'));
-const extension = path.join(app, 'Contents/Resources/KumoExtension');
-const metadata = JSON.parse(await readFile(path.join(extension, 'build-info.json'), 'utf8'));
+const extensionSource = path.join(app, 'Contents/Resources/KumoExtension');
+const metadata = JSON.parse(await readFile(path.join(extensionSource, 'build-info.json'), 'utf8'));
 assert.equal(metadata.sourceCompiledLocally, true, 'Store scripting-guard QA requires the locally compiled source app.');
 const helperId = 'eldkgppmnhligdekahicdcdndcoongio';
 assert.equal((await readFile(path.join(root, 'config/extension-id.txt'), 'utf8')).trim(), helperId);
-const helperManifest = JSON.parse(await readFile(path.join(extension, 'manifest.json'), 'utf8'));
+const helperManifest = JSON.parse(await readFile(path.join(extensionSource, 'manifest.json'), 'utf8'));
 const idFromKey = createHash('sha256').update(Buffer.from(helperManifest.key, 'base64')).digest('hex').slice(0, 32)
   .replace(/[0-9a-f]/g, value => String.fromCharCode(97 + Number.parseInt(value, 16)));
 assert.equal(idFromKey, helperId, 'Use the unchanged fixed-ID bundled helper.');
@@ -64,6 +64,7 @@ assert(helperManifest.content_scripts?.some(script => script.js?.includes('store
 const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
 const temporary = await mkdtemp(path.join(tmpdir(), 'kumo-store-guard-qa-'));
 const profile = path.join(temporary, 'profile');
+const extension = path.join(temporary, 'kumo-extension');
 const probeDirectory = path.join(temporary, 'ordinary-probe');
 const token = randomUUID();
 const probeName = `Kumo Store scripting QA ${token}`;
@@ -105,6 +106,7 @@ async function settingsFor(id) {
 }
 
 try {
+  await cp(extensionSource, extension, {recursive: true});
   await mkdir(probeDirectory, {recursive: true});
   await writeFile(path.join(probeDirectory, 'manifest.json'), JSON.stringify({
     manifest_version: 3, name: probeName, version: '1.0.0',

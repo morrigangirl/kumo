@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-19T22:08:01.735416+00:00",
+  "status": "pass-preparation-guards-production-blocked",
+  "releaseTag": "v0.1.0-202610190001",
+  "tests": [
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_github_release.py",
+        "-v"
+      ],
+      "log": "github-release-tests.log",
+      "exitCode": 0,
+      "tests": 27,
+      "sha256": "ef8502d6f9c8996ad8e2a8904b8d2270a0dc5ad8e59f0b849f333a423a19149f"
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_*package*.py",
+        "-v"
+      ],
+      "log": "package-tests.log",
+      "exitCode": 0,
+      "tests": 64,
+      "sha256": "dd7d706c316cdcf542745948c43bc0df9783e759e241d178716251593e4fe9d0"
+    }
+  ],
+  "guard": {
+    "scope": "Reject a bundled model only when included=true and localDevelopmentOnly=true are explicitly recorded.",
+    "enforcedAt": [
+      "production preparation before signing and notarization",
+      "production archive verification",
+      "signer activation before staged configuration mutation"
+    ],
+    "developmentPackagingUnchanged": true,
+    "rejectedStagingUnchanged": true,
+    "newRegressionTests": 6
+  },
+  "prerequisites": [
+    "Install a valid Carson Press LLC Developer ID Application signing identity.",
+    "Select an existing notarytool Keychain profile and complete notarization, stapling and verification.",
+    "Resolve the explicitly development-only PhishLang model metadata or produce a verified package omitting the experimental model."
+  ],
+  "publicationScope": {
+    "noPrivateKeysOrCredentials": true,
+    "noModelWeights": true,
+    "noGeneratedAppOrChromiumCheckout": true,
+    "unrelatedPromotionDocumentUnchanged": true
+  },
+  "sourceSHA256": {
+    "scripts/github-release.py": "72f0f159029b6d37b2126cb23d5916a828da914f6cfc4c0dec9512a775ca74d5",
+    "scripts/sign-release.py": "527a8da6eeac1868c3bb70ce3997a5f05ec2e108bdb517d5158fcf0f8b52d602",
+    "scripts/test_github_release.py": "1972dda3c45dffb6ba38693df5905286eeb231b92a3ed01b7896d1ee768aecab",
+    "scripts/test_updater_package.py": "bf3d5b8a8db7265ed21b14056d69a23106e512f40a0238260539f3795b1bf109"
+  },
+  "evidence": [
+    {
+      "path": ".cache/qa/release-model-scope-guard-2026-10-19/tests-summary.json",
+      "sha256": "1c6e1936c5aa47f4dd855c8f44d6ece1cecfeb1dc8a1e0935378585834073c6e",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/release-model-scope-guard-2026-10-19/github-release-tests.log",
+      "sha256": "ef8502d6f9c8996ad8e2a8904b8d2270a0dc5ad8e59f0b849f333a423a19149f",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/release-model-scope-guard-2026-10-19/package-tests.log",
+      "sha256": "dd7d706c316cdcf542745948c43bc0df9783e759e241d178716251593e4fe9d0",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/release-model-scope-guard-2026-10-19/github-release-doctor.json",
+      "sha256": "1ab9309a887b631814740b3b95fc1ce1fdb547e4298d4411d9e395cf1fc076e8",
+      "generatedArtifactExcludedFromGit": true
+    }
+  ]
+}

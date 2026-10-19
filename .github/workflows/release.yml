@@ -1,0 +1,116 @@
+name: Prepare Kumo GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified draft as the latest browser update
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kumo-github-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Never run privileged signing jobs for pull requests, forks or branch
+    # dispatches. Configure this environment to allow only the protected main
+    # branch and require a release maintainer's approval.
+    if: github.repository == 'morrigangirl/kumo' && github.ref == 'refs/heads/main'
+    environment: github-release
+    runs-on: [self-hosted, macOS, ARM64, kumo-release]
+    timeout-minutes: 1440
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+    env:
+      KUMO_NOTARY_PROFILE: ${{ vars.KUMO_NOTARY_PROFILE }}
+      KUMO_DEVELOPER_ID_SHA1: ${{ vars.KUMO_DEVELOPER_ID_SHA1 }}
+      KUMO_PASSKEY_PROFILE: ${{ vars.KUMO_PASSKEY_PROFILE }}
+    steps:
+      - name: Check out the exact reviewed commit
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          # Preserve the dedicated runner's ignored multi-hundred-GB source
+          # cache. The next step refuses all tracked/untracked source changes.
+          clean: false
+
+      - name: Validate release runner and committed configuration
+        run: |
+          test -n "$KUMO_NOTARY_PROFILE"
+          test -n "$KUMO_DEVELOPER_ID_SHA1"
+          test "$(uname -m)" = arm64
+          command -v gh >/dev/null
+          command -v node >/dev/null
+          xcrun --find swift >/dev/null
+          python3 - <<'PY'
+          import os, runpy, subprocess
+          from pathlib import Path
+          api = runpy.run_path("scripts/github-release.py")
+          api["git_commit"]()
+          config = api["load_config"]()
+          tag = api["release_tag"](config)
+          notes = "docs/releases/" + config["version"] + ".md"
+          if not Path(notes).is_file():
+              raise SystemExit("Committed release notes are missing")
+          commit = subprocess.check_output(["git", "rev-parse", "refs/tags/" + tag + "^{commit}"], text=True).strip()
+          if commit != os.environ["GITHUB_SHA"]:
+              raise SystemExit("The pushed release tag must point to this exact workflow commit")
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write("KUMO_RELEASE_TAG=" + tag + "\n")
+              output.write("KUMO_RELEASE_DIRECTORY=dist/github-releases/" + tag + "\n")
+              output.write("KUMO_RELEASE_NOTES=" + notes + "\n")
+              output.write("KUMO_RELEASE_SOURCE_DIR=build/release-source-" + os.environ["GITHUB_SHA"] + "\n")
+          PY
+
+      - name: Prepare pinned update tools and protection data
+        run: |
+          python3 scripts/prepare-release-vendor.py
+          python3 scripts/source.py doctor
+          python3 scripts/prepare-sparkle.py
+          python3 scripts/prepare-malware-feed.py
+          /usr/bin/python3 scripts/prepare-phishlang.py
+
+      - name: Run release regressions
+        run: |
+          node --test tests/*.test.mjs agent-bridge/test/*.test.mjs
+          python3 -m unittest scripts/test_github_release.py -v
+          python3 -m unittest scripts/test_release_vendor.py -v
+          swift test --package-path native/updater
+
+      - name: Build the pinned Chromium source and package Kumo
+        run: |
+          scripts/build-source.sh package --work-dir "$KUMO_RELEASE_SOURCE_DIR"
+
+      - name: Sign, notarize, staple and prepare signed update assets
+        run: |
+          set -- python3 scripts/github-release.py prepare \
+            --app dist/Kumo.app \
+            --output "$KUMO_RELEASE_DIRECTORY" \
+            --notes "$KUMO_RELEASE_NOTES" \
+            --identity "$KUMO_DEVELOPER_ID_SHA1" \
+            --notary-profile "$KUMO_NOTARY_PROFILE"
+          if [[ -n "$KUMO_PASSKEY_PROFILE" ]]; then
+            set -- "$@" --profile "$KUMO_PASSKEY_PROFILE"
+          fi
+          "$@"
+
+      - name: Upload verified draft and optionally publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KUMO_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -- python3 scripts/github-release.py upload --artifacts "$KUMO_RELEASE_DIRECTORY"
+          if [[ "$KUMO_PUBLISH" = true ]]; then
+            set -- "$@" --publish
+          fi
+          "$@"

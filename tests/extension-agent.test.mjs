@@ -745,3 +745,19 @@ test('ordinary text fields and similar non-sensitive tokens remain usable withou
   }
   assert.doesNotMatch(JSON.stringify((await h.command('tab.snapshot', {tabId: 1})).result), /Ordinary text|SYNTHETIC_FIELD_VALUE/);
 });
+
+test('download scanner status is read-only and restricted to the exact Kumo settings page', async t => {
+  const h = await worker(t);
+  const native = [];
+  h.chrome.runtime.sendNativeMessage = async (name, payload) => {
+    native.push({name, payload});
+    return {id: payload.id, installed: false, available: false, reason: 'setup-required'};
+  };
+  for (const url of ['https://example.com/', 'https://chromewebstore.google.com/detail/fixture', h.chrome.runtime.getURL('popup.html')]) {
+    assert.match((await h.message({type: 'downloadProtection.status'}, {id: h.chrome.runtime.id, url})).error, /Kumo settings/);
+  }
+  assert.match((await h.message({type: 'downloadProtection.status', path: '/private/test-file'})).error, /Kumo settings/);
+  assert.equal(native.length, 0);
+  assert.deepEqual(await h.message({type: 'downloadProtection.status'}), {id: 'settings-status', installed: false, available: false, reason: 'setup-required'});
+  assert.deepEqual(native, [{name: 'com.kumo.malware', payload: {id: 'settings-status', type: 'status'}}]);
+});

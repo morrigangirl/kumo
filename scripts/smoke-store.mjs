@@ -3,7 +3,7 @@
 // Use cua_repl or the GUI to click “Install in Kumo”, then “Add theme”.
 // Send “status” over stdin to inspect only the installed fixture manifest;
 // send “close” (or Ctrl-C) to stop Chromium and remove its disposable profile.
-import {access, mkdtemp, mkdir, writeFile, readFile, rm, readdir} from 'node:fs/promises';
+import {access, cp, mkdtemp, mkdir, writeFile, readFile, rm, readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,11 +12,12 @@ import {spawn} from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = path.join(root, 'dist/Kumo.app/Contents/MacOS/Chromium');
-const extension = process.env.KUMO_QA_EXTENSION_SOURCE || path.join(root, 'dist/Kumo.app/Contents/Resources/KumoExtension');
+const extensionSource = process.env.KUMO_QA_EXTENSION_SOURCE || path.join(root, 'dist/Kumo.app/Contents/Resources/KumoExtension');
 const themeId = 'aghfnjkcakhmadgdomlmlhhaocbkloab';
 const storeURL = `https://chromewebstore.google.com/detail/just-black/${themeId}`;
-await Promise.all([access(executable), access(path.join(extension, 'manifest.json'))]);
+await Promise.all([access(executable), access(path.join(extensionSource, 'manifest.json'))]);
 const temporary = await mkdtemp(path.join(tmpdir(), 'kumo-store-qa-'));
+const extension = path.join(temporary, 'kumo-extension');
 let browser;
 let input;
 let stopped = false;
@@ -40,6 +41,7 @@ async function installedThemes() {
 }
 
 try {
+  await cp(extensionSource, extension, {recursive: true});
   await mkdir(path.join(temporary, 'Default'), {recursive: true});
   await writeFile(path.join(temporary, 'Default/Preferences'), JSON.stringify({
     download: {default_directory: path.join(temporary, 'downloads'), prompt_for_download: false},

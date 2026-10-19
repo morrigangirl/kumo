@@ -2,11 +2,11 @@
 
 Kumo is a native Apple Silicon browser project based on Chromium, with Google browser identity, sync, telemetry integrations, and promotional services removed through ungoogled-chromium. It retains the native Chromium tab strip, omnibox, bookmarks, downloads, DevTools, extension APIs, site permissions, and web platform. Its Swift launcher starts Chromium directly; there is no Electron or webview browser shell.
 
-This repository contains Kumo's source, Chromium overlays, build recipes, tests and validation summaries. Upstream checkouts, downloaded model weights and compiled applications are generated locally and excluded from Git. Evidence links under `build/`, `dist/` and `.cache/` refer to local development artifacts. Follow the [source-build instructions](docs/source-build.md) and [local model preparation](docs/phishing-protection.md#build-and-checks) to reproduce the app.
+This repository contains Kumo's source, Chromium overlays, build recipes, tests and validation summaries. Upstream checkouts, downloaded model weights, threat-list snapshots and compiled applications are generated locally and excluded from Git. Evidence links under `build/`, `dist/` and `.cache/` refer to local development artifacts. Follow the [source-build instructions](docs/source-build.md), [local model preparation](docs/phishing-protection.md#build-and-checks) and [malware-feed preparation](docs/malware-protection.md#reproduce-the-snapshot) to reproduce the app.
 
 The current developer app is compiled locally from the pinned **Chromium 155.0.8059.84** source. It includes Kumo's native Apple AutoFill integration and security corrections, with a completed-build receipt embedded in the signed app. See [source build details](docs/source-build.md).
 
-The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October 15 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html). The local source build replaces that preview with .84. This app is for development validation while ongoing security-update delivery and automatic engine updates are unfinished. Experimental local PhishLang warnings are included and start off; see [setup, model provenance and limitations](docs/phishing-protection.md).
+The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October 15 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html). The local source build replaces that preview with .84. App updates use signed [Kumo GitHub Releases](docs/github-releases.md), with a separate native Sparkle companion. The channel has not been published and remains disabled in Apple Development builds; production delivery requires Developer ID signing and notarization. Experimental local PhishLang warnings are included and start off; see [setup, model provenance and limitations](docs/phishing-protection.md).
 
 ## Run
 
@@ -14,7 +14,7 @@ The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October
 open dist/Kumo.app
 ```
 
-The app is packaged for this Apple Silicon Mac with an Apple Development signature. This is not a notarized Kumo release. Packaging verifies the completed source receipt, compiles the Swift launcher, adds local customization, and signs all native code with the selected team's development identity. It preserves the engine's hardened runtime, library validation and each helper's signing policy, then checks isolated sandboxed startup before replacing the existing app. Rebuilding requires Xcode with its license accepted, Python 3, Node 22+, and a valid Apple Development identity for the configured team.
+The app is packaged for this Apple Silicon Mac with an Apple Development signature. This is not a notarized Kumo release. Packaging verifies the completed source receipt, compiles the Swift launcher, adds local customization, and signs all native code with the selected team's development identity. It preserves the engine's hardened runtime, library validation and each helper's signing policy, then checks isolated sandboxed startup before replacing the existing app. Rebuilding requires Xcode with its license accepted, Python 3.12+, Node 22+, and a valid Apple Development identity for the configured team.
 
 The default `npm run build` always builds that pinned upstream preview. It
 refuses to replace an existing app containing a newer Chromium engine; use
@@ -41,7 +41,7 @@ npm run source:package -- --jobs 4
 
 That command prepares and compiles the actual Chromium source, then packages it. Each locked engine version uses its own `build/source-<version>` workspace; `--work-dir` can override it. Allow several hours and substantial disk space. See [prerequisites, locked inputs, and build commands](docs/source-build.md). Source compilation is distinct from the fast upstream-binary preview build.
 
-The current source build uses `build/source-155.0.8059.84`. Compilation, framework linking, library checks, intermediate packaging and final Kumo signing completed successfully. The latest build is recorded in `build/source-155.0.8059.84-manifest-namespace-001-build.log`; the original build log and earlier `build/source` tree are retained for diagnosis.
+The malware-enabled source build uses `build/source-155.0.8059.84-malware-001`. Its normal Chromium target compiled the native download guard and delegate, linked the framework, verified libraries and signed the engine. The completed-build receipt records the new source input identity. The final build also closes a DevTools completion bypass. Build evidence is in that workspace's `audit/devtools-completion-forwarding-002/`; earlier source trees, receipts and artifacts are retained unchanged. See the [malware protection validation](docs/security-audits/2026-10-19/malware-protection.md).
 
 ## Features and current boundaries
 
@@ -53,9 +53,12 @@ The current source build uses `build/source-155.0.8059.84`. Compilation, framewo
 | Any search engine | Five presets and custom HTTP/HTTPS search templates with `{searchTerms}` on the start page, including local search servers. Chromium's native settings independently control address-bar search engines. |
 | Apple Passwords without its extension | The source app adds a native AppKit context-menu sheet with macOS AutoFill → Passwords. The person chooses a credential and clicks Fill. All four source-browser checks passed: exact synthetic Unicode filled the original HTTPS field despite decoy focus; Cancel, navigation and real tab hiding left the website fields empty. Real Apple credential selection and automatic site matching remain unverified. The upstream-binary preview lacks this native source change. |
 | Native Apple passkeys | Chromium WebAuthn remains. The public capability/consent helper is included in source. A production Kumo identity needs Apple's managed browser entitlement and appropriate provisioning; the local development signature does not grant that capability. |
-| Codex / Claude control | Local stdio MCP tools and Native Messaging bridge, opt-in origin-bound tab grants, session revocation, password-field exclusion. Official clients keep their own personal/work account sign-in. No provider token extraction or separate provider API billing is used. |
+| Codex / Claude Desktop control | Portable Desktop setup, local stdio MCP tools and Native Messaging bridge, opt-in origin-bound tab grants, session revocation, password-field exclusion. Official clients keep their own personal/work account sign-in. No provider token extraction or separate provider API billing is used. |
 | Local phishing warnings | Experimental PhishLang MobileBERT port with native Swift/Core ML CPU inference, a sandboxed helper without network entitlement, bounded privacy-filtered page inputs and a browser-owned warning page. Enable in Privacy & security. Starts off; synthetic integration does not establish production accuracy or an 8 GB hardware qualification. |
-| Chrome security controls | Native certificate/settings UI, sandbox, site isolation and permission model are retained. **Full Chrome security parity is not delivered**: this ungoogled base lacks Safe Browsing, Google component updates, and an automatic engine updater. The source recipe preserves OS download quarantine and Store-origin isolation; the upstream preview has upstream's different defaults. |
+| Known-malware domains | Local HaGeZi TIF Mini rules block listed domains and subdomains for matching page/resource requests. Enabled by default, with list age, controls and periodic HTTPS feed refresh. No browsing URL lookup or file upload. This layer does not scan downloaded files; see [scope and updates](docs/malware-protection.md). |
+| Download antivirus | The source engine holds ordinary downloads for a sandboxed native ClamAV scan before completion or automatic opening. Setup uses the official Cisco installation and verified local definitions, with scheduled updates. Missing, stale, infected, encrypted, limited or failed scans block completion. Saved pages/MHTML use a separate path; see [setup and limits](docs/download-antivirus.md). |
+| App updates | Signed appcasts and archives on `morrigangirl/kumo` GitHub Releases, checked by a separate native Sparkle companion. Installation requires user approval and closed browser profiles. A separate increasing Kumo build counter prevents version rollback. The current development build keeps network checks disabled; the first notarized production release remains unpublished. |
+| Chrome security controls | Native certificate/settings UI, sandbox, site isolation and permission model are retained. **Full Chrome security parity is not delivered**: this ungoogled base lacks Google Safe Browsing and Google component updates. Kumo's release update channel is implemented but production delivery is not active. The source recipe preserves OS download quarantine and Store-origin isolation; the upstream preview has upstream's different defaults. |
 | Web 1/2/3 | Chromium's ordinary web platform, including modern web apps, WebAssembly, WebGL/WebGPU and WebAuthn. Compatible wallet extensions may serve Web3 sites. No wallet, blockchain protocol handler, or IPFS gateway is bundled. |
 | TLS / post-quantum | Chromium/BoringSSL's supported modern TLS and hybrid post-quantum key agreement are inherited. No legacy insecure TLS is enabled. Server support and the actual handshake determine negotiated protection; PQ key agreement does not make the entire certificate ecosystem quantum-safe. |
 
@@ -69,13 +72,15 @@ See [SDK findings and evidence](docs/apple-passwords.md), [native Chromium integ
 
 ## Agent setup
 
-Open **Agents** from Kumo's new tab. Copy the Codex or Claude setup command and run it to register Kumo with your chosen official client. Existing account authentication stays in that client. Workspaces may restrict MCP or browser access. Moving Kumo.app requires rerunning setup because client commands contain its absolute path.
+Open **Agents** from Kumo's new tab. Copy the Codex or Claude setup command and run it to register Kumo with your chosen official client. Existing account authentication stays in that client. Workspaces may restrict MCP or browser access. Setup configures Codex Desktop or Claude Desktop directly and installs a private bridge independent of the checkout or app folder. Moving Kumo.app does not change the clients' MCP command; the launcher resolves Node when it starts. See the [Desktop setup instructions](docs/agents.md#desktop-setup).
 
 Choose the tabs to grant, accept website access, and enable control. The browser starts with control off; changing a tab's origin removes its grant. Revocation invalidates pending results. New tabs require a separate opt-in. Both connected clients share the granted tab set; vendor identity is not authenticated by the local bridge.
 
 See [agent protocol, account setup and access boundaries](docs/agents.md).
 
 ## Verification
+
+The latest [GitHub Releases updater validation](docs/security-audits/2026-10-19/github-release-updates.md) records the current package, signed-feed tests, real Chromium installation-lock checks and remaining production prerequisites.
 
 ```sh
 npm test
@@ -94,6 +99,9 @@ node scripts/smoke-browser.mjs
 node scripts/smoke-agents.mjs
 # Local PhishLang warning flows and native CPU inference, using synthetic pages.
 node scripts/smoke-phishing.mjs
+# Local domain blocking and actual native antivirus completion/cancellation.
+node scripts/smoke-malware.mjs
+node scripts/smoke-download-malware.mjs
 node scripts/smoke-search.mjs
 # Live public Quad9 probe in an isolated profile; native setting and restart check.
 node scripts/smoke-dns.mjs
@@ -119,7 +127,7 @@ Tests use disposable profiles, fake local pages, and official Store extension/th
 
 The source .84 browser passed start-page/theme/search persistence, native settings, original-download quarantine, security-version cards, and real Native Messaging agent-control checks. Its .39→.84 profile upgrade preserved synthetic HTTPOnly cookies and local storage. Live TCP and QUIC checks negotiated TLS 1.3, AES_128_GCM, and X25519MLKEM768; the invalid-certificate fixture was rejected. A bounded 15-second ordinary startup trace observed only the loopback positive control. These describe the tested fixtures and connections, rather than every server or an exhaustive privacy/security audit. Evidence and exact package identities are recorded in [source-build details](docs/source-build.md).
 
-The JavaScript suite passed all 102 tests, including 36 phishing regressions. The [PhishLang port validation](docs/security-audits/2026-10-19/phishlang-port.md) records the current signed app, native tests, real warnings and repeated security checks. The source app also passed the eight-case native Store scripting guard and a complete agent grant/revoke/control check. The Store harness verifies exact SPA document acknowledgement and CRX URL construction behind a rejecting dispatch barrier; actual installation is checked separately through native GUI consent. An earlier signed .84 package passed a real native uBlock Origin Lite upgrade to 2026.1018.2229, with 18,829 packaged rules across six enabled rulesets. Its finalized trace records the approved 9,145,194-byte package download during the first native Update; the installed version, packed location and public-key-derived ID matched. This establishes the observed manual upgrade, while automatic scheduling and hostile-update rejection remain unverified. See [extension update evidence](docs/extension-update-qa.md).
+The JavaScript suite passed all 147 tests, including 36 phishing regressions and 23 bridge tests. The [Desktop connectivity validation](docs/security-audits/2026-10-19/desktop-connectivity.md) records portable installation and real client configuration checks. The [malware protection validation](docs/security-audits/2026-10-19/malware-protection.md) records domain blocking, twelve actual antivirus download cases and the final source receipt. The earlier [PhishLang port validation](docs/security-audits/2026-10-19/phishlang-port.md) records its signed app, native tests, real warnings and repeated security checks. The source app also passed the eight-case native Store scripting guard and a complete agent grant/revoke/control check. The Store harness verifies exact SPA document acknowledgement and CRX URL construction behind a rejecting dispatch barrier; actual installation is checked separately through native GUI consent. An earlier signed .84 package passed a real native uBlock Origin Lite upgrade to 2026.1018.2229, with 18,829 packaged rules across six enabled rulesets. Its finalized trace records the approved 9,145,194-byte package download during the first native Update; the installed version, packed location and public-key-derived ID matched. This establishes the observed manual upgrade, while automatic scheduling and hostile-update rejection remain unverified. See [extension update evidence](docs/extension-update-qa.md).
 
 Native search QA added a custom HTTP engine through Settings and made it the default. The choice survived a browser restart, and the native omnibox controller generated correct query URLs that reached a local fixture. Native custom-engine templates use `%s`; Kumo's start-page templates use `{searchTerms}`.
 

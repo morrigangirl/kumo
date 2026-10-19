@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { chmod, lstat, mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { privateDirectory } from '../desktop.mjs';
 
 export const CLI_PATH = fileURLToPath(new URL('../cli.mjs', import.meta.url));
 export const DEFAULT_RUNTIME_DIR = path.join(homedir(), '.kumo', 'agents');
@@ -12,7 +13,9 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function privateRuntime(runtimeDir = process.env.KUMO_AGENT_DIR || DEFAULT_RUNTIME_DIR) {
   if (!path.isAbsolute(runtimeDir)) throw new Error('KUMO_AGENT_DIR must be an absolute path');
-  await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
+  const userHome = homedir();
+  if (runtimeDir.startsWith(userHome + path.sep)) await privateDirectory(runtimeDir, {anchor: userHome});
+  else await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
   const stat = await lstat(runtimeDir);
   if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) throw new Error('Unsafe bridge runtime directory');
   await chmod(runtimeDir, 0o700);

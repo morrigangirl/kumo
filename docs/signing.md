@@ -13,6 +13,14 @@ implements the separate production step: it signs **every nested native code ite
 the chosen Carson Press Developer ID Application identity, retaining Chromium's
 per-process entitlements and runtime policies.
 
+App distribution and updates use [Kumo GitHub Releases](github-releases.md).
+The separate native updater contains pinned Sparkle code and requires signed
+feeds and archives. Its network checks remain disabled in development builds.
+The release signer enables it only in a staging copy prepared with
+`--notary-profile`; notarization must succeed before that copy is published.
+Signing without notarization keeps update checks disabled. The GitHub release
+tool requires notarization and verifies the finished archive before upload.
+
 ## Readiness and a reviewable plan
 
 These commands read public certificate metadata, provisioning-profile metadata

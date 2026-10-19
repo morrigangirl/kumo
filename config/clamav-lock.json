@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "version": "1.5.4",
+  "packageURL": "https://github.com/Cisco-Talos/clamav/releases/download/clamav-1.5.4/clamav-1.5.4.macos.universal.pkg",
+  "packageSHA256": "df7fa753e2f9f67f3bc99b2a40a3be7ef559088c68ad6bdf66b4b5764e965bd6",
+  "packageBytes": 166772489,
+  "installerTeamID": "DE8Y96K9QP",
+  "installerLeafSHA256": "C59ADFCCF1102477877F0B2A8355F3441A1365CA3F0B13CA82B8F94E4EF1FA67",
+  "codeTeamID": "DE8Y96K9QP",
+  "installPrefix": "/usr/local/clamav",
+  "databaseMaxAgeHours": 72,
+  "sourceURL": "https://github.com/Cisco-Talos/clamav/releases/tag/clamav-1.5.4",
+  "license": "GPL-2.0-or-later; external vendor runtime downloaded by user, not redistributed in Kumo",
+  "files": [
+    {
+      "path": "bin/clamav-config",
+      "bytes": 1060,
+      "sha256": "08e1abec1a027cf74522679edabc92f61580ce425dd49e240b38ed783ca3d4f0"
+    },
+    {
+      "path": "bin/clambc",
+      "bytes": 328528,
+      "sha256": "c2a740567654662cd5c058bd8f4946e0828118de724a9c96dfb89d54e0b8c410"
+    },
+    {
+      "path": "bin/clamconf",
+      "bytes": 326624,
+      "sha256": "b6f45ed9d481129263903dd40ae0a33edd88f8fe48161254ad34d79771617c3e"
+    },
+    {
+      "path": "bin/clamdscan",
+      "bytes": 401344,
+      "sha256": "ac84d0bd5b91d901dea49874cdb72034377adf91ca243bad61077829de6a521a"
+    },
+    {
+      "path": "bin/clamdtop",
+      "bytes": 991504,
+      "sha256": "7163e729b6da9f68c7811dafdce24204e46615045983e7bba41b45c285525fc5"
+    },
+    {
+      "path": "bin/clamscan",
+      "bytes": 433568,
+      "sha256": "faeafb8ca0e25c6748f09a7708413f2ed7fb78a77b85dce3b1b78ed5bb573cb3"
+    },
+    {
+      "path": "bin/clamsubmit",
+      "bytes": 13828816,
+      "sha256": "93e5132fe05b61e9a642f308687d6478fc566356d3b93a5a45ab1e1d8b7b107d"
+    },
+    {
+      "path": "bin/freshclam",
+      "bytes": 263936,
+      "sha256": "886c42760af3e5fac27e4bd4c1a1f45cd470ddd2572bd275026992a6543240ae"
+    },
+    {
+      "path": "bin/sigtool",
+      "bytes": 451152,
+      "sha256": "1b335a4bced7cbcfbcfe679140b235ab69ba116bf33ae28d418a92ff33daf6d1"
+    },
+    {
+      "path": "etc/certs/clamav.crt",
+      "bytes": 1976,
+      "sha256": "60200e4b4b1b1b7257bb4550487aeb142034341f3300a8526e77a3134a940e9d"
+    },
+    {
+      "path": "lib/libclamav.12.1.0.dylib",
+      "bytes": 67813696,
+      "sha256": "021319020c8536331abe12237c9b468bfccf08dd5616a8292a97d33f743e5084"
+    },
+    {
+      "path": "lib/libclamav.12.dylib",
+      "symlink": "libclamav.12.1.0.dylib"
+    },
+    {
+      "path": "lib/libclamav.dylib",
+      "symlink": "libclamav.12.dylib"
+    },
+    {
+      "path": "lib/libclammspack.0.8.0.dylib",
+      "bytes": 303376,
+      "sha256": "06971e3445fe0d0bca0bceb0d637d6b5ca0e576f80694be664eaef340fa3268a"
+    },
+    {
+      "path": "lib/libclammspack.0.dylib",
+      "symlink": "libclammspack.0.8.0.dylib"
+    },
+    {
+      "path": "lib/libclammspack.dylib",
+      "symlink": "libclammspack.0.dylib"
+    },
+    {
+      "path": "lib/libclamunrar.12.1.0.dylib",
+      "bytes": 826640,
+      "sha256": "0647110dd525e3bab83b88976e01bed98873e32b68ae89b5e2e12a399352d79d"
+    },
+    {
+      "path": "lib/libclamunrar.12.dylib",
+      "symlink": "libclamunrar.12.1.0.dylib"
+    },
+    {
+      "path": "lib/libclamunrar.dylib",
+      "symlink": "libclamunrar.12.dylib"
+    },
+    {
+      "path": "lib/libclamunrar_iface.12.1.0.dylib",
+      "bytes": 119504,
+      "sha256": "edf30565095aa50a211179891426684cf2f6493f7699cfad68f10795bf28f7b6"
+    },
+    {
+      "path": "lib/libclamunrar_iface.12.dylib",
+      "symlink": "libclamunrar_iface.12.1.0.dylib"
+    },
+    {
+      "path": "lib/libclamunrar_iface.dylib",
+      "symlink": "libclamunrar_iface.12.dylib"
+    },
+    {
+      "path": "lib/libfreshclam.4.0.0.dylib",
+      "bytes": 13833664,
+      "sha256": "1333e378179328b107ad7d72749c527144d3acbd835eb9b97e63c7a13401e378"
+    },
+    {
+      "path": "lib/libfreshclam.4.dylib",
+      "symlink": "libfreshclam.4.0.0.dylib"
+    },
+    {
+      "path": "lib/libfreshclam.dylib",
+      "symlink": "libfreshclam.4.dylib"
+    }
+  ]
+}

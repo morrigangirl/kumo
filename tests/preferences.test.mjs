@@ -49,7 +49,8 @@ test('extension identity is stable and uses a public key; no remote code or broa
   const expected = (await readFile(new URL('../config/extension-id.txt', import.meta.url), 'utf8')).trim();
   const hex = createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32);
   const id = [...hex].map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
-  assert.equal(id, expected); assert.equal(manifest.host_permissions, undefined);
+  assert.equal(id, expected); assert.deepEqual(manifest.host_permissions, ['https://raw.githubusercontent.com/*']);
   assert(!manifest.permissions.includes('debugger')); assert(!manifest.permissions.includes('cookies'));
-  assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self' data: blob:; connect-src 'self'");
+  assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com");
+  assert.deepEqual(manifest.declarative_net_request.rule_resources, [{id: 'kumo_malware', enabled: true, path: 'malware/rules.json'}]);
 });

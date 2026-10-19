@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "config/source-lock.json"
 GN_PATH = ROOT / "config/chromium.gn"
 VENDOR = ROOT / "vendor/ungoogled-chromium-macos"
+INTEGRATION_OVERLAYS = ("native_overlay.py", "extensions_overlay.py", "malware_overlay.py")
+DOWNLOAD_GUARD_INPUTS = ("kumo_download_guard.h", "kumo_download_guard.mm")
 
 
 def run(*command, cwd=None, env=None):
@@ -254,10 +256,23 @@ def brand_source(src):
     extensions.write_text(text)
 
 
+def verify_integration_inputs():
+    """Fail before retrieval if an integration or its copied source is absent."""
+    for name in INTEGRATION_OVERLAYS:
+        path = ROOT / "scripts" / name
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError(f"Missing Chromium integration overlay: {name}; no source downloaded")
+    for name in DOWNLOAD_GUARD_INPUTS:
+        path = ROOT / "native/chromium" / name
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError(f"Missing native download security input: {name}; no source downloaded")
+
+
 def input_digest():
+    verify_integration_inputs()
     h = hashlib.sha256()
     paths = [LOCK_PATH, GN_PATH, Path(__file__)]
-    for name in ("native_overlay.py", "extensions_overlay.py", "build_receipt.py", "verified_lld.py"):
+    for name in (*INTEGRATION_OVERLAYS, "build_receipt.py", "verified_lld.py"):
         overlay = ROOT / "scripts" / name
         if overlay.is_file():
             paths.append(overlay)
@@ -317,10 +332,8 @@ def save_state(work, state):
 
 
 def prepare(work, lock):
+    verify_integration_inputs()
     verify_vendor(lock)
-    for name in ("native_overlay.py", "extensions_overlay.py"):
-        if not (ROOT / "scripts" / name).is_file():
-            raise RuntimeError(f"Missing Chromium integration overlay: {name}; no source downloaded")
     work.mkdir(parents=True, exist_ok=True)
     state_path = work / "state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {"inputDigest": input_digest(), "done": []}
@@ -336,6 +349,8 @@ def prepare(work, lock):
     elif state.get("inProgress"):
         raise RuntimeError(f"Source stage {state['inProgress']} was interrupted. Use a new --work-dir; partial patching is never retried.")
     if "ready" in state["done"]:
+        if "malware-downloads" not in state["done"]:
+            raise RuntimeError("Prepared source is missing its native malware download stage; use a new --work-dir.")
         compatibility_linker(work / "recipe/build/src", lock)
         print(f"Prepared source: {work / 'recipe/build/src'}")
         return
@@ -366,6 +381,7 @@ def prepare(work, lock):
     stage("branding", lambda: brand_source(src))
     stage("native-passwords", lambda: run(sys.executable, ROOT / "scripts/native_overlay.py", src))
     stage("extensions", lambda: run(sys.executable, ROOT / "scripts/extensions_overlay.py", src))
+    stage("malware-downloads", lambda: run(sys.executable, ROOT / "scripts/malware_overlay.py", src))
     def configure():
         destination = src / "out/Default"
         destination.mkdir(parents=True, exist_ok=True)
@@ -390,6 +406,9 @@ def build(work, lock, jobs):
         raise RuntimeError("Locked GN arguments do not select the verified compatibility linker")
     if args_path.read_text() != expected_args:
         raise RuntimeError("Prepared GN arguments differ from the locked configuration; no compilation started")
+    # A prepared-state label alone cannot attest that the mandatory completion
+    # hook and copied native guard still match the reviewed repository inputs.
+    run(sys.executable, ROOT / "scripts/malware_overlay.py", src, "--verify-applied")
     built_args = digest(args_path)
     build_inputs = input_digest()
     receipt_spec = importlib.util.spec_from_file_location("_kumo_completed_build", ROOT / "scripts/build_receipt.py")
@@ -437,6 +456,7 @@ def build(work, lock, jobs):
     if input_digest() != build_inputs or digest(args_path) != built_args:
         raise RuntimeError("Source inputs or GN arguments changed during compilation; no completed-build receipt recorded")
     compatibility_linker(src, lock, verify_only=True)
+    run(sys.executable, ROOT / "scripts/malware_overlay.py", src, "--verify-applied")
     receipt.record_build(app, ROOT, build_inputs, args_path)
     print(f"Compiled and locally signed engine: {app}")
     return app
@@ -499,7 +519,7 @@ def main():
         parser.error("Chromium source/build paths must not contain spaces")
     if args.dry_run:
         print(f"Pinned Chromium {lock['chromiumVersion']} / mac packaging {lock['macosPackaging']['commit']}\nWorkspace: {work}")
-        print("prepare: verify pinned checkouts; copy isolated recipe; download+verify locked archive; prune; apply both patch stacks; domain substitution; download+verify arm64 tools and immutable SDK-compatible linker; brand Kumo; restore Store isolation + FedCM; add native Passwords and anonymous signed Store-update source integrations; write GN args")
+        print("prepare: verify pinned checkouts; copy isolated recipe; download+verify locked archive; prune; apply both patch stacks; domain substitution; download+verify arm64 tools and immutable SDK-compatible linker; brand Kumo; restore Store isolation + FedCM; add native Passwords, anonymous signed Store updates, and malware download completion gate; write GN args")
         print(f"build: GN bootstrap; Rust bindgen; gn gen --fail-on-unused-args; ninja -C out/Default -j {args.jobs} chrome; upstream ad-hoc signing")
         print(f"package: python3 scripts/package.py --engine-app {work / 'recipe/build/src' / lock['engineBundle']}")
         print("No commands executed. Safe Browsing is unavailable in this source base; native Apple Passwords source integration requires compilation and runtime validation.")

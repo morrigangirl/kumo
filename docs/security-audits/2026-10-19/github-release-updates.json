@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-19T20:20:32.222870+00:00",
+  "status": "pass-development-integration",
+  "app": "dist/Kumo.app",
+  "releaseChannel": {
+    "schemaVersion": 1,
+    "repository": "morrigangirl/kumo",
+    "version": "0.1.0",
+    "build": "202610190001",
+    "feedURL": "https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml",
+    "publicEDKey": "eiLxRqAuU1SsTSkD3qz07MwRxtUk03Xoob/20tyoGn8=",
+    "signingKeyAccount": "app.kumo.browser.release"
+  },
+  "sparkleDependency": {
+    "schema": 1,
+    "version": "2.10.0",
+    "repository": "sparkle-project/Sparkle",
+    "archiveURL": "https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-2.10.0.tar.xz",
+    "archiveSHA256": "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c",
+    "archiveBytes": 16319840,
+    "minimumSystemVersion": "12.0"
+  },
+  "packagedApp": {
+    "bundleIdentifier": "app.kumo.browser",
+    "signingTeamId": "PV65ZWXCWX",
+    "minimumSystemVersion": "13.0.0",
+    "engineVersion": "155.0.8059.84",
+    "sourceBuildReceiptSha256": "614a7344c6f87f7ae037e04b85e7b040ab916f1fe87d87017ea3c37b30482f81",
+    "signatures": {
+      "app": {
+        "CDHash": "20d78e4a96abeec08c82e18c493b36dfaea31196",
+        "team": "PV65ZWXCWX",
+        "flags": "0x12a00",
+        "entitlements": {
+          "com.apple.security.device.audio-input": true,
+          "com.apple.security.device.bluetooth": true,
+          "com.apple.security.device.camera": true,
+          "com.apple.security.device.print": true,
+          "com.apple.security.device.usb": true,
+          "com.apple.security.personal-information.location": true,
+          "com.apple.security.personal-information.photos-library": true
+        }
+      },
+      "engine": {
+        "CDHash": "7054dd10120ec147b44723024355ffa95d31501f",
+        "team": "PV65ZWXCWX",
+        "flags": "0x12a00",
+        "entitlements": {
+          "com.apple.security.device.audio-input": true,
+          "com.apple.security.device.bluetooth": true,
+          "com.apple.security.device.camera": true,
+          "com.apple.security.device.print": true,
+          "com.apple.security.device.usb": true,
+          "com.apple.security.personal-information.location": true,
+          "com.apple.security.personal-information.photos-library": true
+        }
+      },
+      "phishing": {
+        "CDHash": "28609ccc185cecc55038a803c8d0aa7ee2dde193",
+        "team": "PV65ZWXCWX",
+        "flags": "0x12a00",
+        "entitlements": {
+          "com.apple.security.app-sandbox": true
+        }
+      },
+      "malware": {
+        "CDHash": "6430cdba85b1609afd12a940f49db7ecf21a53a6",
+        "team": "PV65ZWXCWX",
+        "flags": "0x12a00",
+        "entitlements": {
+          "com.apple.security.app-sandbox": true,
+          "com.apple.security.temporary-exception.files.absolute-path.read-only": [
+            "/usr/local/clamav/"
+          ],
+          "com.apple.security.temporary-exception.files.home-relative-path.read-only": [
+            "/Library/Application Support/KumoSecurity/",
+            "/Library/LaunchAgents/app.kumo.clamav-definitions.plist"
+          ]
+        }
+      },
+      "setup": {
+        "CDHash": "4ffa1c6aeef713a0087b9f5f8ac6dbb04e31a1d3",
+        "team": "PV65ZWXCWX",
+        "flags": "0x12a00",
+        "entitlements": {}
+      },
+      "updater": {
+        "CDHash": "306fc41c3540e1285f3fa885d70018909d5ea844",
+        "team": "PV65ZWXCWX",
+        "flags": "0x12a00",
+        "entitlements": {}
+      }
+    },
+    "updaterSignedBinarySHA256": "4d21f6341a637b136923a14e52d7129f75899d09685805ccd309adde6af69c7f",
+    "sourceInputDigest": "92acde368a82bc38610f1e310f97a769658d901aa53f0988db3a0b38b568814c",
+    "sourceReceiptSHA256": "614a7344c6f87f7ae037e04b85e7b040ab916f1fe87d87017ea3c37b30482f81",
+    "engineCodeAndDataIdentity": {
+      "engine": {
+        "codeAndDataSectionsMatch": true,
+        "sectionCount": 11,
+        "sectionsSHA256": "aa1b7c2c5cacf62baf26b79373442b119e15495a4fc194d33b0f84f00e51417b"
+      },
+      "framework": {
+        "codeAndDataSectionsMatch": true,
+        "sectionCount": 39,
+        "sectionsSHA256": "abe28370a3c2f22b26364943e47f2d3c2b0662c77dae1243fcc80db0d24ead93"
+      }
+    },
+    "sealAfterBrowserQA": {
+      "cdhash": "20d78e4a96abeec08c82e18c493b36dfaea31196",
+      "codeResourcesSHA256": "16fb27a6bf30bf8c5ba986f388998e0bc9bd16f6a401a9b6a8cfbc27ec8305f3",
+      "strictDeepValid": true
+    }
+  },
+  "tests": {
+    "javascript": 147,
+    "packageAndReleaseActivation": 62,
+    "compiledLauncher": 20,
+    "nativeUpdaterPolicy": 19,
+    "nativeChoiceMatrixCases": 18,
+    "nativeNetworkDeniedCases": 8,
+    "actualObjCCallbackSelectors": 13,
+    "releasePublishingAndVendor": 27,
+    "officialSparkleArchiveAndWholeFeedTamperChecks": {
+      "officialSparkleVersion": "2.10.0",
+      "archiveSignatureVerified": true,
+      "wholeFeedSignatureVerified": true,
+      "tamperedArchiveRejected": true,
+      "tamperedWholeFeedRejected": true,
+      "keychainPublicKeyMatchesCommittedConfig": true,
+      "privateKeysExported": false,
+      "workflowShellAndEmbeddedPythonSyntax": "pass"
+    },
+    "browserSecurity": [
+      {
+        "check": "agents",
+        "command": [
+          "node",
+          "scripts/smoke-agents.mjs"
+        ],
+        "exitCode": 0,
+        "startedAtUtc": "2026-10-19T20:17:37.489592+00:00",
+        "seconds": 2.975
+      },
+      {
+        "check": "store-script-guard",
+        "command": [
+          "node",
+          "scripts/smoke-store-script-guard.mjs"
+        ],
+        "exitCode": 0,
+        "startedAtUtc": "2026-10-19T20:17:41.203917+00:00",
+        "seconds": 6.089
+      },
+      {
+        "check": "security-status",
+        "command": [
+          "node",
+          "scripts/smoke-security.mjs"
+        ],
+        "exitCode": 0,
+        "startedAtUtc": "2026-10-19T20:17:47.293278+00:00",
+        "seconds": 1.533
+      },
+      {
+        "check": "startup-privacy",
+        "command": [
+          "node",
+          "scripts/smoke-privacy.mjs"
+        ],
+        "exitCode": 0,
+        "startedAtUtc": "2026-10-19T20:17:48.899198+00:00",
+        "seconds": 16.751
+      },
+      {
+        "check": "tls-tcp",
+        "command": [
+          "node",
+          "scripts/check-network.mjs",
+          "--tcp"
+        ],
+        "exitCode": 0,
+        "startedAtUtc": "2026-10-19T20:18:05.651557+00:00",
+        "seconds": 1.644
+      }
+    ],
+    "actualChromiumLease": {
+      "passed": true,
+      "app": "dist/Kumo.app",
+      "browserVersion": "Chrome/155.0.8059.84",
+      "launcherPrefixSHA256": "ca93792ff315d6b26da0cedbb5a99db03e45afc0dd249e637ce7b4856f295517",
+      "observationSecondsAfterStartup": 3,
+      "checks": {
+        "baselineExclusiveLeaseAvailable": true,
+        "actualChromiumSharedLeaseAfterStartup": true,
+        "concurrentSharedLeaseAllowed": true,
+        "actualChromiumSharedLeaseAfterObservation": true,
+        "browserClosedViaOwnedLoopbackCDP": true,
+        "exclusiveLeaseAvailableAfterBrowserExit": true,
+        "nativeStatusDisabledAndUnchanged": true,
+        "signedAppUnchanged": true
+      },
+      "nativeStatus": {
+        "available": false,
+        "build": "202610190001",
+        "feedURL": "https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml",
+        "provider": "github-releases",
+        "reason": "release-signing-not-configured",
+        "repository": "morrigangirl/kumo",
+        "requiresAllProfilesClosed": true,
+        "requiresUserInstallation": true,
+        "schemaVersion": 1,
+        "sparkleVersion": "2.10.0",
+        "version": "0.1.0"
+      },
+      "seal": {
+        "cdhash": "20d78e4a96abeec08c82e18c493b36dfaea31196",
+        "codeResourcesSHA256": "16fb27a6bf30bf8c5ba986f388998e0bc9bd16f6a401a9b6a8cfbc27ec8305f3",
+        "strictDeepValid": true
+      },
+      "cleanup": {
+        "ownedProcessReaped": true,
+        "ownedGroupRequiredSignals": false,
+        "signalsLimitedToOwnedReservedProcessGroup": true
+      },
+      "scope": {
+        "headless": true,
+        "disposableProfile": true,
+        "allDNSDenied": true,
+        "backgroundNetworkingDisabled": true,
+        "loopbackDebuggingOnlyForQA": true,
+        "feedChecksPerformed": false,
+        "productionInstallationTested": false,
+        "productionInstallationUnavailableReason": "Developer ID certificate and notarized release are not configured"
+      },
+      "checkedAtUTC": "2026-10-19T20:19:21.213000+00:00"
+    }
+  },
+  "readiness": {
+    "developmentUpdaterAvailable": false,
+    "productionDeveloperIDInstalled": false,
+    "productionSigningReady": false,
+    "productionBlockers": [
+      "Select exactly one installed, valid Developer ID Application identity for the configured team; Apple Development is insufficient."
+    ],
+    "releasePrivateKeyExported": false,
+    "githubWritesPerformed": false,
+    "githubWorkflowDispatched": false,
+    "productionArchiveReplacementTested": false
+  },
+  "sourceSHA256": {
+    "native/updater/README.md": "4ce08871f1ecd2f9a762621c7464692ee09d9a757e29943370a9217a8215d8af",
+    "native/updater/Package.swift": "d6a031874a527943a631e34ccb41cb0190bfb14df127db8e7c4f629fe2c7a0e2",
+    "native/updater/Sources/UpdaterPolicy.swift": "830e28d48a51323a02ec9f14cbc69ce83bb1eb2ddd87305e215f3c2ad1ae9cd7",
+    "native/updater/Sources/main.swift": "166d104fc03991d90b39c69de84fd8d75d3e4981cbfd203458b58bdf6c3125c0",
+    "native/updater/Tests/Fixtures/lease-probe.c": "616b157b5ba847a57d388db6f98827e6a3d791885faf5a3bc1a5b70cd1e9db3e",
+    "native/updater/Tests/KumoUpdaterPolicyTests/UpdaterPolicyTests.swift": "4b233e77ec2845278f9a47a7e7400d597bfb13f726f81c40d1929c49c76ad580",
+    "scripts/build-updater.sh": "68e83c424d763f9e95515d3ca64ccf763601af0c7f6f0b6946c5de27f657c754"
+  },
+  "scope": [
+    "Current Apple Development app does not query the release feed.",
+    "Signing and whole-feed/archive tamper verification use the pinned official Sparkle tools.",
+    "Browser lease proof used a compiled wrapper from the exact launcher prefix, the real packaged Chromium and a disposable profile.",
+    "Native policy, helper status and callback registration are tested; Developer ID signing, notarization and full archive replacement await production prerequisites.",
+    "Post-extraction ambiguous installer failures retain the lock until completion or a verified expected replacement; manual repair may be required if neither can be confirmed.",
+    "Sparkle Ed25519 trust can authorize signing-identity rotation; the publishing pipeline enforces Carson Press Developer ID and notarization on every produced release.",
+    "All publication paths remain unexecuted; no unsigned development build was uploaded."
+  ],
+  "evidence": [
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/package.log",
+      "sha256": "8c2c4df390267a1c2f71de157ea54c188ca5c83fbcd42920f1a1d2e20ded757a",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/javascript.log",
+      "sha256": "f8f716cae34e6041a1f6e69758de4251e72c83274922e16a1139a2b7d7caf5a3",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/package-tests.log",
+      "sha256": "3e4eebf1d2027b354d72988673a3a9ee226cc17988b62c3488fe7dc6a8fe20d6",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/launcher-tests.log",
+      "sha256": "5425c37d170965ae23568eec57b4d3a94debfdfc8a2ea0478f9dff9238431636",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/artifact-review/artifact-review.json",
+      "sha256": "9638c126039e5e154c919c3d365911f8abdf321a54a7a8f79c8603870bf51724",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/release-pipeline-summary.json",
+      "sha256": "82812528f9e25eae60eb36d9188a131102ad361c6f4b89128f344b648b460543",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/release-pipeline-tests.log",
+      "sha256": "9e8af775e1966e69b4e4847ea80bb27c64ffaa4f687d03add531c89df3d837a8",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/browser-security/summary.json",
+      "sha256": "a190f01a77b0ee81c249a59f57dd9f92f9a64f86e83f7ae4438256b1db60cccb",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updates-2026-10-19/production-doctor.json",
+      "sha256": "f35f3448b78ac96456c9981c0b992e2a7dc32e6807c2b458bd7b7c2235b8137b",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-releases-native-2026-10-19/summary.json",
+      "sha256": "e437ab17d4883eef6a68355603bbd3aed0926bea9aeb2b5fa2c70e83619da6df",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-releases-native-2026-10-19/policy-tests.log",
+      "sha256": "9bc982d3f3a9f42405da041fa26dc3ade3a9836d2ad82d9363b1f92c83f84acf",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-releases-native-2026-10-19/protocol-selectors.json",
+      "sha256": "491d39e4993109e25ef510b66533e0333e6b660f575c16302b55c0c657fb9a93",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/github-release-updater-smoke/final/results.json",
+      "sha256": "bf9f0a4bc5539eca6c4d53db21752111079db09b8272e3db801bff9bf56ee0c3",
+      "generatedArtifactExcludedFromGit": true
+    }
+  ]
+}

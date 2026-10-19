@@ -28,6 +28,50 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = "155.0.8059.39-1.1"
 SHA256 = "1a71ee2aa987f471e5ba61e853a0d9aa4b634fa68213ad24df2e970b7729385b"
 DOWNLOAD = f"https://github.com/ungoogled-software/ungoogled-chromium-macos/releases/download/{VERSION}/ungoogled-chromium_{VERSION}_arm64-macos.dmg"
+AGENT_RUNTIME_FILES = ("cli.mjs", "desktop.mjs", "run", "package.json",
+                       "lib/broker.mjs", "lib/runtime.mjs", "lib/protocol.mjs", "lib/mcp.mjs")
+
+def release_configuration():
+    return runpy.run_path(str(ROOT / "scripts/github-release.py"))["load_config"](ROOT / "config/release.json")
+
+def updater_plist(config):
+    return {
+        "CFBundleShortVersionString": config["version"], "CFBundleVersion": config["build"],
+        "SUFeedURL": config["feedURL"], "SUPublicEDKey": config["publicEDKey"],
+        "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True,
+        "SUSignedFeedFailureExpirationInterval": 0, "SUEnableSystemProfiling": False,
+        "SUAllowsAutomaticUpdates": False, "SUAutomaticallyUpdate": False,
+        "SUEnableAutomaticChecks": True, "SUScheduledCheckInterval": 86400,
+    }
+
+def copy_agent_runtime(destination, source=ROOT / "agent-bridge"):
+    """Package runtime code only, excluding local configuration and credentials."""
+    if source.is_symlink() or (source / "lib").is_symlink():
+        raise RuntimeError("Agent runtime source directories must not be symlinks.")
+    destination.mkdir()
+    for relative in AGENT_RUNTIME_FILES:
+        item = source / relative
+        if item.is_symlink() or not item.is_file():
+            raise RuntimeError("Agent runtime requires regular source files.")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item, target)
+
+def copy_extension_resources(destination, source=ROOT / "extension"):
+    cache = source / "_metadata"
+    if cache.exists() or cache.is_symlink():
+        raise RuntimeError("Generated extension caches must stay outside the signed source bundle.")
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".DS_Store", ".env", ".env.*", "node_modules"))
+
+def portable_setup_commands():
+    """Launch Services locates the installed app; no build-machine paths escape."""
+    actions = {
+        "codexSetupCommand": "--kumo-connect-codex-desktop",
+        "claudeSetupCommand": "--kumo-connect-claude-desktop",
+        "downloadScannerSetupCommand": "--kumo-scanner-setup",
+        "downloadScannerUpdateCommand": "--kumo-scanner-update",
+    }
+    return {key: "open -n -b app.kumo.browser --args " + flag for key, flag in actions.items()}
 
 def run(*args, **kwargs):
     subprocess.run([str(a) for a in args], check=True, **kwargs)
@@ -97,18 +141,18 @@ def remove_stale_tickets(app):
         removed.append(str(ticket.relative_to(app)))
     return removed
 
-def resign_nested_code(destination, identity, team):
+def resign_nested_code(destination, identity, team, code_root=None):
     # Library validation requires consistent signing of the engine and its
     # framework. Retaining another developer's framework signature while making
     # the main binary ad-hoc causes dyld to reject it. Keep every original role's
     # JIT entitlements and flags; do not disable library validation to evade this.
-    root = destination / "Contents/Frameworks"
-    bundles = [p for p in root.rglob("*") if not p.is_symlink() and p.is_dir() and p.suffix in (".app", ".framework")]
+    root = code_root or destination / "Contents/Frameworks"
+    bundles = [p for p in root.rglob("*") if not p.is_symlink() and p.is_dir() and p.suffix in (".app", ".framework", ".xpc")]
     bundle_mains = set()
     for bundle in bundles:
-        plist = bundle / ("Contents/Info.plist" if bundle.suffix == ".app" else "Resources/Info.plist")
+        plist = bundle / ("Contents/Info.plist" if bundle.suffix in (".app", ".xpc") else "Resources/Info.plist")
         info = plistlib.loads(plist.read_bytes())
-        executable = bundle / ("Contents/MacOS" if bundle.suffix == ".app" else "") / info["CFBundleExecutable"]
+        executable = bundle / ("Contents/MacOS" if bundle.suffix in (".app", ".xpc") else "") / info["CFBundleExecutable"]
         bundle_mains.add(executable.resolve())
     magics = {b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca"}
     binaries = []
@@ -175,6 +219,16 @@ def verified_phishing_resources(directory=None):
     except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
         raise RuntimeError("PhishLang resources are missing or invalid. Run /usr/bin/python3 scripts/prepare-phishlang.py before packaging.") from error
 
+def verified_malware_resources(directory=None):
+    """Validate the pinned, licensed threat-list snapshot before signing."""
+    directory = Path(directory) if directory else ROOT / "build/malware-feed"
+    try:
+        lock = json.loads((ROOT / "config/malware-feed-lock.json").read_text())
+        feed_api = runpy.run_path(str(ROOT / "scripts/prepare-malware-feed.py"))
+        return feed_api["verify_directory"](directory, lock)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+        raise RuntimeError("Malware feed resources are missing or invalid. Run python3 scripts/prepare-malware-feed.py before packaging.") from error
+
 def verify_phishing_start(destination):
     payload = json.dumps({"id": "package-probe", "type": "classify", "text": 'TITLE: { "text": "Public library hours" }'}).encode()
     helper = destination / "Contents/Helpers/KumoPhishing.app/Contents"
@@ -194,6 +248,21 @@ def verify_phishing_start(destination):
             type(windows) is not int or not 1 <= windows <= 8 or type(tokens) is not int or tokens < 0):
         raise RuntimeError("Sandboxed PhishLang host could not load and run the packaged local model.")
 
+def verify_malware_start(destination):
+    payload = json.dumps({"id": "package-probe", "type": "status"}).encode()
+    helper = destination / "Contents/Helpers/KumoMalware.app/Contents/MacOS/KumoMalwareHost"
+    result = subprocess.run([str(helper), f"chrome-extension://{extension_id()}/"],
+                            input=struct.pack("<I", len(payload)) + payload, capture_output=True, timeout=30)
+    if result.returncode or len(result.stdout) < 4:
+        raise RuntimeError("Sandboxed download scanner failed its status startup check.")
+    length = struct.unpack("<I", result.stdout[:4])[0]
+    if length > 8192 or len(result.stdout) != length + 4:
+        raise RuntimeError("Download scanner emitted an invalid Native Messaging frame.")
+    reply = json.loads(result.stdout[4:])
+    if (reply.get("id") != "package-probe" or type(reply.get("installed")) is not bool or type(reply.get("available")) is not bool or
+            reply["available"] and not reply["installed"]):
+        raise RuntimeError("Download scanner emitted an invalid status reply.")
+
 def assemble(engine, destination, local_source, installed_destination):
     receipt_api = None
     source_receipt = None
@@ -203,7 +272,12 @@ def assemble(engine, destination, local_source, installed_destination):
             engine, ROOT, receipt_api["current_input_digest"](ROOT))
     identity, signing_team = development_identity()
     phishing_info = verified_phishing_resources()
+    malware_info = verified_malware_resources()
+    release = release_configuration()
+    run(sys.executable, ROOT / "scripts/prepare-sparkle.py", "--verify")
     run("bash", ROOT / "scripts/build-phishing.sh")
+    run("bash", ROOT / "scripts/build-malware.sh")
+    run("bash", ROOT / "scripts/build-updater.sh")
     # DMG Finder metadata can make strict codesign verification fail. Copy only
     # the app data, then verify its original sealed code before changing anything.
     run("ditto", "--norsrc", "--noextattr", engine, destination)
@@ -213,6 +287,24 @@ def assemble(engine, destination, local_source, installed_destination):
     remove_stale_tickets(destination)
     engine_policy = signature_policy(destination)
     resources = destination / "Contents/Resources"
+    updater_bundle = destination / "Contents/Helpers/KumoUpdater.app"
+    updater_contents = updater_bundle / "Contents"
+    (updater_contents / "MacOS").mkdir(parents=True)
+    (updater_contents / "Frameworks").mkdir()
+    (updater_contents / "Resources").mkdir()
+    (updater_contents / "Info.plist").write_bytes(plistlib.dumps({
+        "CFBundleIdentifier": "app.kumo.browser.updater", "CFBundleExecutable": "KumoUpdater",
+        "CFBundleName": "Kumo Updates", "CFBundlePackageType": "APPL",
+        "CFBundleVersion": release["build"], "CFBundleShortVersionString": release["version"],
+        "LSMinimumSystemVersion": "13.0", "LSUIElement": True,
+    }))
+    shutil.copy2(ROOT / "build/updater-native/KumoUpdater", updater_contents / "MacOS/KumoUpdater")
+    shutil.copytree(ROOT / "build/sparkle/Sparkle.framework", updater_contents / "Frameworks/Sparkle.framework", symlinks=True)
+    shutil.copyfile(ROOT / "build/sparkle/LICENSE", updater_contents / "Resources/Sparkle-LICENSE.txt")
+    (resources / "kumo-update-config.json").write_text(json.dumps({**release, "enabled": False, "teamId": signing_team}, indent=2) + "\n")
+    update_lock = resources / "kumo-update-lock"
+    update_lock.write_bytes(b"Kumo update coordination v1\n")
+    update_lock.chmod(0o644)
     phishing_bundle = destination / "Contents/Helpers/KumoPhishing.app"
     phishing_contents = phishing_bundle / "Contents"
     phishing_resources = phishing_contents / "Resources/PhishLang"
@@ -236,8 +328,29 @@ def assemble(engine, destination, local_source, installed_destination):
         "name": "com.kumo.phishing", "description": "Kumo local PhishLang classifier",
         "type": "stdio", "allowed_origins": [f"chrome-extension://{extension_id()}/"],
     }, indent=2) + "\n")
-    shutil.copytree(ROOT / "extension", resources / "KumoExtension")
-    shutil.copytree(ROOT / "agent-bridge", resources / "agent-bridge", ignore=shutil.ignore_patterns("test", "node_modules"))
+    malware_contents = destination / "Contents/Helpers/KumoMalware.app/Contents"
+    (malware_contents / "MacOS").mkdir(parents=True)
+    (malware_contents / "Resources").mkdir()
+    (malware_contents / "Info.plist").write_bytes(plistlib.dumps({
+        "CFBundleIdentifier": "app.kumo.malware", "CFBundleExecutable": "KumoMalwareHost",
+        "CFBundleName": "KumoMalware", "CFBundlePackageType": "APPL",
+        "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0",
+        "LSMinimumSystemVersion": "13.0", "LSBackgroundOnly": True,
+    }))
+    shutil.copy2(ROOT / "build/malware-native/KumoMalwareScanner", malware_contents / "MacOS/KumoMalwareHost")
+    shutil.copy2(ROOT / "build/malware-native/KumoMalwareSetup", destination / "Contents/MacOS/KumoMalwareSetup")
+    for folder in (resources, malware_contents / "Resources"):
+        shutil.copyfile(ROOT / "config/clamav-lock.json", folder / "clamav-lock.json")
+    (resources / "malware-host-template.json").write_text(json.dumps({
+        "name": "com.kumo.malware", "description": "Kumo local download scanner status",
+        "type": "stdio", "allowed_origins": [f"chrome-extension://{extension_id()}/"],
+    }, indent=2) + "\n")
+    copy_extension_resources(resources / "KumoExtension")
+    malware_resources = resources / "KumoExtension/malware"
+    malware_resources.mkdir()
+    for name in ("rules.json", "metadata.json", "source.txt", "LICENSE.txt", "NOTICE.md"):
+        shutil.copyfile(ROOT / "build/malware-feed" / name, malware_resources / name)
+    copy_agent_runtime(resources / "agent-bridge")
     node = shutil.which("node")
     if not node:
         raise RuntimeError("Node.js 22+ is required for the local agent bridge.")
@@ -260,30 +373,34 @@ def assemble(engine, destination, local_source, installed_destination):
         if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", engine_version):
             raise RuntimeError("The supplied engine is missing its full Chromium version.")
     info.update(CFBundleExecutable="Kumo", CFBundleName="Kumo", CFBundleDisplayName="Kumo", CFBundleIdentifier="app.kumo.browser", CFBundleShortVersionString="0.1.0", LSApplicationCategoryType="public.app-category.productivity")
+    info.update(updater_plist(release))
+    info["LSMinimumSystemVersion"] = "13.0"
     info["KumoEngineVersion"] = engine_version
     info.pop("CFBundleIconName", None)
     info["CFBundleIconFile"] = "Kumo.icns"
     info_path.write_bytes(plistlib.dumps(info))
     eid = extension_id()
-    installed_resources = installed_destination / "Contents/Resources"
-    bridge = installed_resources / "agent-bridge/cli.mjs"
     # Shell wrapper resolves its location, so native host launching survives moving the app.
     wrapper = resources / "kumo-native-host"
-    wrapper.write_text("#!/bin/sh\nKUMO_RESOURCES=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\nexec " + shlex.quote(node) + ' "$KUMO_RESOURCES/agent-bridge/cli.mjs" native "$@"\n')
+    wrapper.write_text('#!/bin/sh\nset -eu\nKUMO_RESOURCES=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$KUMO_RESOURCES/agent-bridge/run" native "$@"\n')
     wrapper.chmod(0o755)
     host = {"name": "com.kumo.agent_bridge", "description": "Kumo opt-in agent bridge", "type": "stdio", "allowed_origins": [f"chrome-extension://{eid}/"]}
     (resources / "native-host-template.json").write_text(json.dumps(host, indent=2) + "\n")
     setup = resources / "setup-agent"
-    setup.write_text("#!/bin/sh\nKUMO_RESOURCES=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\nexec " + shlex.quote(node) + ' "$KUMO_RESOURCES/agent-bridge/cli.mjs" install --extension-id ' + shlex.quote(eid) + '\n')
+    setup.write_text('#!/bin/sh\nset -eu\nKUMO_RESOURCES=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$KUMO_RESOURCES/agent-bridge/run" install --extension-id ' + shlex.quote(eid) + ' "$@"\n')
     setup.chmod(0o755)
     # These commands only configure MCP when the person explicitly runs them.
-    setup_command = shlex.quote(str(installed_resources / "setup-agent"))
-    codex = f"{setup_command} && codex mcp add kumo -- {shlex.quote(node)} {shlex.quote(str(bridge))} mcp"
-    claude = f"{setup_command} && claude mcp add --transport stdio --scope user kumo -- {shlex.quote(node)} {shlex.quote(str(bridge))} mcp"
     source_target_version = json.loads((ROOT / "config/source-lock.json").read_text())["chromiumVersion"]
     if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", source_target_version):
         raise RuntimeError("The source lock is missing its full Chromium target version.")
-    build_info = {"engineVersion": engine_version, "sourceTargetVersion": source_target_version, "sourceCompiledLocally": local_source, "codeSigningTeamId": signing_team, "signingMode": "apple-development", "extensionId": eid, "codexSetupCommand": codex, "claudeSetupCommand": claude}
+    build_info = {"engineVersion": engine_version, "sourceTargetVersion": source_target_version, "sourceCompiledLocally": local_source, "codeSigningTeamId": signing_team, "signingMode": "apple-development", "extensionId": eid, **portable_setup_commands()}
+    build_info["appUpdates"] = {
+        "included": True, "ready": False, "provider": "github-releases", "repository": release["repository"],
+        "releasesURL": "https://github.com/morrigangirl/kumo/releases", "feedURL": release["feedURL"],
+        "version": release["version"], "build": release["build"], "sparkleVersion": "2.10.0",
+        "checkCommand": "open -n -b app.kumo.browser --args --kumo-check-for-updates",
+        "productionSigningRequired": True,
+    }
     build_info["phishingProtection"] = {
         "included": True, "modelVersion": phishing_info["modelVersion"],
         "modelDirectorySHA256": phishing_info["modelDirectorySHA256"],
@@ -291,6 +408,15 @@ def assemble(engine, destination, local_source, installed_destination):
         "experimental": True, "enabledByDefault": False,
         "localDevelopmentOnly": phishing_info.get("localDevelopmentOnly") is True,
         "rightsStatus": phishing_info.get("rightsStatus", "unverified"),
+    }
+    build_info["malwareProtection"] = {
+        "included": True, "enabledByDefault": True,
+        "type": "local-malware-domain-blocking", "provider": "HaGeZi TIF Mini",
+        "version": malware_info["version"], "domainCount": malware_info["domainCount"],
+        "sourceCommit": malware_info["sourceCommit"], "sourceSHA256": malware_info["SHA256"],
+        "modifiedAt": malware_info["modifiedAt"], "license": "GPL-3.0",
+        "downloadAntivirusIncluded": local_source,
+        "downloadScanner": "ClamAV (separate official installation required)",
     }
     if source_receipt is not None:
         build_info["sourceBuildReceipt"] = source_receipt
@@ -302,6 +428,10 @@ def assemble(engine, destination, local_source, installed_destination):
         handle.write(entitlements)
         handle.flush()
         resign_nested_code(destination, identity, signing_team)
+        resign_nested_code(destination, identity, signing_team, updater_contents / "Frameworks")
+        run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.browser.updater",
+            "--options", hex(engine_policy), updater_bundle)
+        signature_policy(updater_bundle, expected_team=signing_team)
         # The classifier has no browser/agent privileges or network entitlement.
         # It reads only its bundled model and bounded Native Messaging frames.
         with tempfile.NamedTemporaryFile(suffix=".plist") as phishing_entitlements:
@@ -310,6 +440,20 @@ def assemble(engine, destination, local_source, installed_destination):
             run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.phishing",
                 "--options", hex(engine_policy), "--entitlements", phishing_entitlements.name, phishing_bundle)
             signature_policy(phishing_bundle, expected_team=signing_team)
+        with tempfile.NamedTemporaryFile(suffix=".plist") as malware_entitlements:
+            malware_entitlements.write(plistlib.dumps({
+                "com.apple.security.app-sandbox": True,
+                "com.apple.security.temporary-exception.files.absolute-path.read-only": ["/usr/local/clamav/"],
+                "com.apple.security.temporary-exception.files.home-relative-path.read-only": [
+                    "/Library/Application Support/KumoSecurity/", "/Library/LaunchAgents/app.kumo.clamav-definitions.plist"],
+            }))
+            malware_entitlements.flush()
+            run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.malware",
+                "--options", hex(engine_policy), "--entitlements", malware_entitlements.name, malware_contents.parent)
+            signature_policy(malware_contents.parent, expected_team=signing_team)
+        run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.malware-setup",
+            "--options", hex(engine_policy), destination / "Contents/MacOS/KumoMalwareSetup")
+        signature_policy(destination / "Contents/MacOS/KumoMalwareSetup", expected_team=signing_team)
         # Both executables are bound to this bundle's modified Info.plist.
         for target in (destination / "Contents/MacOS/Chromium", destination):
             run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.browser",
@@ -319,6 +463,14 @@ def assemble(engine, destination, local_source, installed_destination):
     run("codesign", "--verify", "--deep", "--strict", "-R", f'=anchor apple generic and certificate leaf[subject.OU] = "{signing_team}"', destination)
     verify_engine_start(destination)
     verify_phishing_start(destination)
+    verify_malware_start(destination)
+    status = subprocess.run([str(updater_contents / "MacOS/KumoUpdater"), "--status"],
+                            capture_output=True, timeout=30, check=True)
+    update_status = json.loads(status.stdout)
+    if (update_status.get("available") is not False or update_status.get("repository") != release["repository"]
+            or update_status.get("reason") != "release-signing-not-configured"
+            or update_status.get("version") != release["version"] or update_status.get("build") != release["build"]):
+        raise RuntimeError("Packaged updater failed its no-network development status check.")
     return build_info
 
 def publish_preview(staged, destination):

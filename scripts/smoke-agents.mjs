@@ -133,6 +133,21 @@ try {
     return {headers: document.querySelectorAll('header').length, footers: document.querySelectorAll('footer').length, body: rect(document.body), footer: rect(document.querySelector('footer')), footerText: document.querySelector('footer')?.innerText};
   })}));
   await controls.locator('#openAgents').click();
+  // Capture the actual button output without replacing the user's clipboard or
+  // launching a client. The packaged commands must survive moving this app.
+  await controls.evaluate(() => {
+    globalThis.kumoQACopiedCommands = [];
+    Object.defineProperty(navigator, 'clipboard', {value: {writeText: async text => globalThis.kumoQACopiedCommands.push(text)}, configurable: true});
+  });
+  assert.equal(await controls.getByRole('heading', {name: 'Codex Desktop', exact: true}).count(), 1);
+  assert.equal(await controls.getByRole('heading', {name: 'Claude Desktop', exact: true}).count(), 1);
+  await controls.locator('#copyCodex').click();
+  await controls.locator('#copyClaude').click();
+  assert.deepEqual(await controls.evaluate(() => globalThis.kumoQACopiedCommands), [
+    'open -n -b app.kumo.browser --args --kumo-connect-codex-desktop',
+    'open -n -b app.kumo.browser --args --kumo-connect-claude-desktop',
+  ]);
+  checks.push('Desktop setup buttons copy portable commands for the correct clients');
   const choice = controls.locator('#tabChoices label').filter({hasText: 'Kumo Agent QA fixture'});
   await choice.locator('input').check();
   await controls.locator('#grantAgents').click();

@@ -18,7 +18,7 @@ The reviewed agent files match the copies inside the current signed `dist/Kumo.a
 
 The grant dialog records the displayed origin and requests that site's extension permission, but sends only tab IDs to the worker. The worker reads each tab's current URL and grants its current origin. If the tab navigates while the dialog is open and the destination retains a host permission from earlier use, the grant can authorize a different origin from the one the person confirmed.
 
-Evidence: [newtab.js:116](/Volumes/Creative/software-code-utilities/kumo-browser/extension/newtab.js:116), [newtab.js:132](/Volumes/Creative/software-code-utilities/kumo-browser/extension/newtab.js:132), [background.js:245](/Volumes/Creative/software-code-utilities/kumo-browser/extension/background.js:245).
+Evidence: [newtab.js:116](../../../extension/newtab.js#L116), [newtab.js:132](../../../extension/newtab.js#L132), [background.js:245](../../../extension/background.js#L245).
 
 The unchanged production UI and worker handlers reproduced a displayed/requested `https://example.com` becoming an actual grant for `https://other.example`. The connected client could then list that destination. A destination without retained host permission was rejected by the negative control. Default-off agent access and required prior host permission limit exposure; the flaw still violates the origin-specific confirmation boundary.
 
@@ -28,7 +28,7 @@ The unchanged production UI and worker handlers reproduced a displayed/requested
 
 The sensitive-field check matches `autocomplete="one-time-code"` exactly. A valid token list such as `autocomplete="section-login one-time-code"` does not match, so the injected agent function permits type/click actions on that verification-code field.
 
-Evidence: [background.js:164](/Volumes/Creative/software-code-utilities/kumo-browser/extension/background.js:164), with action paths at [background.js:178](/Volumes/Creative/software-code-utilities/kumo-browser/extension/background.js:178) and [background.js:188](/Volumes/Creative/software-code-utilities/kumo-browser/extension/background.js:188). Pinned Blink's autocomplete parser accepts the section prefix.
+Evidence: [background.js:164](../../../extension/background.js#L164), with action paths at [background.js:178](../../../extension/background.js#L178) and [background.js:188](../../../extension/background.js#L188). Pinned Blink's autocomplete parser accepts the section prefix.
 
 The actual worker and injected function accepted synthetic type/click actions using a deterministic DOM shim. The exact unprefixed OTP form was rejected. This establishes an action-policy bypass; it does **not** demonstrate reading an existing OTP/password, crossing an origin boundary or escaping Chromium's sandbox.
 
@@ -44,7 +44,7 @@ Both findings were independently reproduced and reviewed. Neither is assigned a 
 | Security-data updates | The prepared global component checker returns before doing update work. CRLSet and PKI Metadata remain registered, but registration does not deliver new data. | Provide a maintained, authenticated channel for revocation/root constraints, CT log lists and relevant key pins; review privacy behavior before restoring endpoints. |
 | URL/download reputation | Safe Browsing database, remote and download-protection paths are disabled/removed. DNS blocking is not URL or file reputation. | Integrate maintained, appropriately licensed non-Google protection matching the intended product security claims. |
 
-Evidence includes [config/chromium.gn:25](/Volumes/Creative/software-code-utilities/kumo-browser/config/chromium.gn:25), prepared `components/update_client/update_checker.cc:105–109`, component registrations and generated build flags. These are existing design/release gaps, not newly assigned CVEs.
+Evidence includes [config/chromium.gn:25](../../../config/chromium.gn#L25), prepared `components/update_client/update_checker.cc:105–109`, component registrations and generated build flags. These are existing design/release gaps, not newly assigned CVEs.
 
 **CT deadline:** the bundled CT log data is dated September 20. The actual policy considers it timely for 70 days. Without refreshed data, it becomes untimely on **November 29, 2026 at 8:35:40 AM New York time**. `ChromeCTPolicyEnforcer::CheckCompliance` then returns `CT_POLICY_BUILD_NOT_TIMELY`, and `RequireCTDelegate::CheckCTRequirements` treats that result as requirements met. SCT-based root constraints are also gated on timely data. This is a source-backed future fail-open condition; the bundled list is currently timely and ordinary TLS certificate validation remains enabled. No future-clock runtime experiment was performed. A rebuilt engine with refreshed data or a validated data-update path can change this deadline.
 
@@ -87,7 +87,7 @@ The inspected build retains V8 sandboxing, pointer compression, bounds checks, s
 - New reproductions: **3/3 reproduced the two issues and negative control**, independently repeated. A passing reproducer means the flaw exists; these are not fixes.
 - Missing new runtime coverage includes certificate-error, embedded-frame and BFCache/process-crash negative native Passwords cases, hostile update rejection, real credentials and exploit/fuzz testing of the Chromium tree.
 
-Raw advisories, CNA records, fetch hashes, source comparisons, actual code diffs, test logs and peer-review results are retained in `/Volumes/Creative/software-code-utilities/kumo-browser/.cache/qa/security-sweep-2026-10-19/`. Important records are `upstream/cve-matrix.json`, `native/upstream-peer-review.json`, `native/extension-peer-review.json`, `extensions/findings.json`, `root-independent-repros.log`, `source/source-review.md`, `source/ct-staleness-call-chain.json` and `packaged-js-comparison.json`.
+Raw advisories, CNA records, fetch hashes, source comparisons, actual code diffs, test logs and peer-review results are retained in `.cache/qa/security-sweep-2026-10-19/`. Important records are `upstream/cve-matrix.json`, `native/upstream-peer-review.json`, `native/extension-peer-review.json`, `extensions/findings.json`, `root-independent-repros.log`, `source/source-review.md`, `source/ct-staleness-call-chain.json` and `packaged-js-comparison.json`.
 
 Recommended order: repair the two agent boundaries and revalidate the packaged app; implement browser and security-data update delivery; close reputation-protection and production-release validation gaps. Preserve this dated snapshot and rerun advisory collection against the exact next source lock.
 
@@ -98,3 +98,6 @@ Primary references:
 - [CVE authority API example: CVE-2026-110922](https://cveawg.mitre.org/api/cve/CVE-2026-110922) — every record's exact API URL and hash are in the matrix.
 - [Official Chromium .85 commit](https://github.com/chromium/chromium/commit/0e66b94549a8bd85f03fbdf189b752d6e7b63c32), [Chromium .79→.84 comparison](https://github.com/chromium/chromium/compare/155.0.8059.79...155.0.8059.84), and [V8 comparison](https://github.com/v8/v8/compare/d89479ac5446a374c55a35be19b5a23437558d99...712e1808de2d7416f1276d0deb1ee4ac978132b8).
 - [CISA KEV catalog](https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json).
+
+
+Export note (2026-10-19): machine-specific checkout paths were converted to repository-relative references. Findings and evidence hashes are unchanged. The original report is retained privately under `.cache/qa/desktop-connectivity-2026-10-19/original-audit-exports/report.md`; its SHA-256 is `80321eca4ea69b65a4da7063593401230469928179e12c512318cb7dccc044fd`. Historical references to the original report hash identify those original bytes.

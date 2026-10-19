@@ -1,8 +1,10 @@
 import {canControl, webURL} from './shared.js';
 import {ENGINE_VERSION} from './engine-version.js';
 import {createPhishingProtection} from './phishing-background.js';
+import {createMalwareProtection} from './malware-background.js';
 
 const phishingProtection = createPhishingProtection(chrome);
+const malwareProtection = createMalwareProtection(chrome);
 
 const EMPTY = () => ({enabled: false, allowNewTabs: false, grants: []});
 let port = null;
@@ -242,6 +244,13 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   (async () => {
     await ready;
     if (typeof message.type === 'string' && message.type.startsWith('phishing.')) return phishingProtection.handleMessage(message, sender);
+    if (typeof message.type === 'string' && message.type.startsWith('malware.')) return malwareProtection.handleMessage(message, sender);
+    if (message.type === 'downloadProtection.status') {
+      let settingsPage = false;
+      try { const url = new URL(sender.url); settingsPage = url.protocol === 'chrome-extension:' && url.host === chrome.runtime.id && url.pathname === '/newtab.html'; } catch {}
+      if (!settingsPage || Object.keys(message).length !== 1) throw new Error('Open Kumo settings to check download protection.');
+      return chrome.runtime.sendNativeMessage('com.kumo.malware', {id: 'settings-status', type: 'status'});
+    }
     if (message.type === 'agent.status' && internal) return {...await getState(), bridgeError: (await chrome.storage.session.get('bridgeError')).bridgeError, bridgeConnected: (await chrome.storage.session.get('bridgeConnected')).bridgeConnected || false};
     if (message.type === 'agent.disable' && internal) { await revoke(); return {ok: true}; }
     if (message.type === 'agent.configure' && internal) {

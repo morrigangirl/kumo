@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { startBroker, connectBroker } from './lib/broker.mjs';
 import { privateRuntime, ensureBroker, CLI_PATH } from './lib/runtime.mjs';
 import { NativeDecoder, nativeMessage } from './lib/protocol.mjs';
 import { serveMcp } from './lib/mcp.mjs';
+import {installPortableRuntime, configureDesktopProviders, atomicPrivateWrite, readPrivateFile, temporaryInstallAnchor, DESKTOP_MCP} from './desktop.mjs';
 
 export const HOST_NAME = 'com.kumo.agent_bridge';
 const shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -15,33 +16,44 @@ async function install(args, runtime) {
   const options = {};
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index];
-    if (!['--extension-id', '--browser-profile', '--manifest-path'].includes(key) || !args[index + 1]) throw new Error('Invalid install option');
+    if (!['--extension-id', '--browser-profile', '--manifest-path', '--provider'].includes(key) || !args[index + 1] || Object.hasOwn(options, key)) throw new Error('Invalid install option');
     options[key] = args[index + 1];
   }
-  const extensionId = options['--extension-id'];
+  const provider = options['--provider'];
+  if (provider && !['codex-desktop', 'claude-desktop', 'all'].includes(provider)) throw new Error('Choose codex-desktop, claude-desktop, or all.');
+  const extensionId = options['--extension-id'] || (provider ? 'eldkgppmnhligdekahicdcdndcoongio' : null);
   if (!/^[a-p]{32}$/.test(extensionId || '')) throw new Error('Pass --extension-id with the 32-letter ID shown in chrome://extensions');
   if (options['--browser-profile'] && options['--manifest-path']) throw new Error('Choose --browser-profile or --manifest-path');
   const profile = options['--browser-profile'] || path.join(homedir(), 'Library', 'Application Support', 'Kumo');
   const manifestPath = options['--manifest-path'] || path.join(profile, 'NativeMessagingHosts', HOST_NAME + '.json');
   if (!path.isAbsolute(manifestPath) || !path.isAbsolute(profile)) throw new Error('Installation paths must be absolute');
+  const home = homedir(), canonicalRuntime = path.join(home, '.kumo', 'agents');
+  if (provider && runtime.runtimeDir !== canonicalRuntime) throw new Error('Desktop setup requires the standard ~/.kumo/agents directory. Unset KUMO_AGENT_DIR and retry.');
+  await installPortableRuntime({home, runtimeDir: runtime.runtimeDir});
+  const anchorFor = file => file.startsWith(home + path.sep) ? home : file.startsWith(runtime.runtimeDir + path.sep) ? runtime.runtimeDir : null;
+  const write = async (file, data, options = {}) => {
+    const anchor = anchorFor(file) || await temporaryInstallAnchor(file);
+    return atomicPrivateWrite(file, data, {anchor, ...options});
+  };
   const origin = `chrome-extension://${extensionId}/`;
   const originsPath = path.join(runtime.runtimeDir, 'allowed-origins.json');
   let origins = [];
-  try { origins = JSON.parse(await readFile(originsPath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const originData = await readPrivateFile(originsPath, {maximum: 8192});
+  if (originData) origins = JSON.parse(originData.toString('utf8'));
   if (!Array.isArray(origins) || origins.some(value => !/^chrome-extension:\/\/[a-p]{32}\/$/.test(value))) throw new Error('Invalid installed extension origins');
   origins = [...new Set([...origins, origin])];
-  await writeFile(originsPath, JSON.stringify(origins, null, 2) + '\n', { mode: 0o600 });
+  await write(originsPath, JSON.stringify(origins, null, 2) + '\n');
   const launcherPath = path.join(runtime.runtimeDir, 'native-host.sh');
-  await writeFile(launcherPath, `#!/bin/sh\nexport KUMO_AGENT_DIR=${shellQuote(runtime.runtimeDir)}\nexec ${shellQuote(process.execPath)} ${shellQuote(CLI_PATH)} native "$@"\n`, { mode: 0o700 });
-  await mkdir(path.dirname(manifestPath), { recursive: true, mode: 0o700 });
-  await writeFile(manifestPath, JSON.stringify({ name: HOST_NAME, description: 'Kumo opt-in agent bridge', path: launcherPath, type: 'stdio', allowed_origins: [origin] }, null, 2) + '\n', { mode: 0o600 });
+  await write(launcherPath, '#!/bin/sh\nset -eu\nKUMO_AGENT_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)\nexport KUMO_AGENT_DIR\nexec "$KUMO_AGENT_DIR/server/run" native "$@"\n', {mode: 0o700});
+  await write(manifestPath, JSON.stringify({ name: HOST_NAME, description: 'Kumo opt-in agent bridge', path: launcherPath, type: 'stdio', allowed_origins: [origin] }, null, 2) + '\n', {backup: true});
   const codexConfig = path.join(runtime.runtimeDir, 'codex-config.toml');
   const claudeConfig = path.join(runtime.runtimeDir, 'claude-mcp.json');
-  const command = process.execPath;
-  const env = { KUMO_AGENT_DIR: runtime.runtimeDir };
-  await writeFile(codexConfig, `[mcp_servers.kumo]\ncommand = ${JSON.stringify(command)}\nargs = [${JSON.stringify(CLI_PATH)}, "mcp"]\n\n[mcp_servers.kumo.env]\nKUMO_AGENT_DIR = ${JSON.stringify(runtime.runtimeDir)}\n`, { mode: 0o600 });
-  await writeFile(claudeConfig, JSON.stringify({ mcpServers: { kumo: { type: 'stdio', command, args: [CLI_PATH, 'mcp'], env } } }, null, 2) + '\n', { mode: 0o600 });
-  console.log(JSON.stringify({ installed: true, manifestPath, codexConfig, claudeConfig, note: 'Kumo configuration files generated. Existing Codex and Claude settings were not changed.' }, null, 2));
+  const snippet = runtime.runtimeDir === canonicalRuntime ? DESKTOP_MCP : {command: '/bin/sh', args: ['-c', `exec ${shellQuote(path.join(runtime.runtimeDir, 'server/run'))} mcp`]};
+  await write(codexConfig, `[mcp_servers.kumo]\ncommand = ${JSON.stringify(snippet.command)}\nargs = ${JSON.stringify(snippet.args)}\n`);
+  await write(claudeConfig, JSON.stringify({mcpServers: {kumo: {type: 'stdio', command: snippet.command, args: [...snippet.args]}}}, null, 2) + '\n');
+  const providers = provider ? await configureDesktopProviders(provider, {home}) : [];
+  console.log(JSON.stringify({installed: true, manifestPath, codexConfig, claudeConfig, serverPath: path.join(runtime.runtimeDir, 'server'), providers,
+    note: provider ? 'Restart the configured desktop clients when convenient to load Kumo. No client was restarted.' : 'Portable bridge and configuration snippets installed. Desktop client settings were not changed.'}, null, 2));
 }
 
 async function native(runtime, args) {
@@ -72,7 +84,7 @@ async function native(runtime, args) {
 async function main() {
   const [mode, ...args] = process.argv.slice(2);
   if (!['install', 'broker', 'native', 'mcp'].includes(mode)) {
-    console.log('Kumo agent bridge (Node 22+)\n\n  node agent-bridge/cli.mjs install --extension-id ID [--browser-profile /absolute/path | --manifest-path /absolute/file.json]\n  node agent-bridge/cli.mjs mcp\n\nThe install command generates local Codex and Claude configuration snippets. It never logs in or starts an agent task.');
+    console.log('Kumo agent bridge (Node 22+)\n\n  agent-bridge/run install --provider codex-desktop|claude-desktop|all\n  agent-bridge/run install --extension-id ID [--browser-profile /absolute/path | --manifest-path /absolute/file.json]\n  agent-bridge/run mcp\n\nProvider setup configures the desktop clients and preserves existing settings. It never logs in, starts a task, or restarts a client.');
     return;
   }
   const runtime = await privateRuntime();

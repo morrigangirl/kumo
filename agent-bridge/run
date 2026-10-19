@@ -1,0 +1,18 @@
+#!/bin/sh
+# Stable, relocatable launcher. MCP stdout belongs exclusively to the protocol.
+set -eu
+case "$0" in */*) kumo_script_parent=${0%/*} ;; *) kumo_script_parent=. ;; esac
+kumo_server_dir=$(CDPATH= cd -P -- "$kumo_script_parent" && pwd)
+case "$kumo_server_dir" in
+  */server) KUMO_AGENT_DIR=$(CDPATH= cd -P -- "$kumo_server_dir/.." && pwd); export KUMO_AGENT_DIR ;;
+esac
+kumo_path_node=$(command -v node 2>/dev/null || :)
+unset NODE_OPTIONS NODE_PATH
+for kumo_node in "$kumo_path_node" /opt/homebrew/bin/node /usr/local/bin/node; do
+  if [ -n "$kumo_node" ] && [ -x "$kumo_node" ] &&
+      "$kumo_node" -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' </dev/null >/dev/null 2>&1; then
+    exec "$kumo_node" "$kumo_server_dir/cli.mjs" "$@"
+  fi
+done
+printf '%s\n' 'Kumo requires Node.js 22 or newer. Install Node and run setup again.' >&2
+exit 69

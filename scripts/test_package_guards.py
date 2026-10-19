@@ -95,5 +95,45 @@ class DowngradeGuards(unittest.TestCase):
             PACKAGE.incoming_engine_version(self.destination, True)
 
 
+class AgentPayloadGuards(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="kumo-agent-payload-")
+        self.addCleanup(self.temporary.cleanup)
+        self.source = Path(self.temporary.name) / "source"
+        self.source.mkdir()
+        for relative in PACKAGE.AGENT_RUNTIME_FILES:
+            target = self.source / relative
+            target.parent.mkdir(exist_ok=True)
+            target.write_text("runtime fixture\n")
+        self.destination = Path(self.temporary.name) / "packaged"
+
+    def test_local_secrets_and_extra_files_are_never_packaged(self):
+        (self.source / ".env").write_text("PRIVATE_QA_SENTINEL")
+        (self.source / "pairing-token").write_text("PRIVATE_QA_SENTINEL")
+        PACKAGE.copy_agent_runtime(self.destination, self.source)
+        files = {p.relative_to(self.destination).as_posix() for p in self.destination.rglob("*") if p.is_file()}
+        self.assertEqual(files, set(PACKAGE.AGENT_RUNTIME_FILES))
+
+    def test_symlinked_runtime_file_is_rejected(self):
+        target = self.source / "cli.mjs"
+        target.unlink()
+        target.symlink_to(self.source / "package.json")
+        with self.assertRaisesRegex(RuntimeError, "regular source files"):
+            PACKAGE.copy_agent_runtime(self.destination, self.source)
+
+    def test_generated_extension_cache_cannot_enter_signed_resources(self):
+        (self.source / "_metadata").mkdir()
+        with self.assertRaisesRegex(RuntimeError, "Generated extension caches"):
+            PACKAGE.copy_extension_resources(self.destination, self.source)
+        self.assertFalse(self.destination.exists())
+
+    def test_extension_copy_excludes_local_environment_files(self):
+        (self.source / ".env.local").write_text("PRIVATE_QA_SENTINEL")
+        (self.source / "manifest.json").write_text('{"manifest_version":3}')
+        PACKAGE.copy_extension_resources(self.destination, self.source)
+        self.assertTrue((self.destination / "manifest.json").is_file())
+        self.assertFalse((self.destination / ".env.local").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

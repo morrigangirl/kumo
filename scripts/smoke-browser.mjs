@@ -1,6 +1,6 @@
 // Integration QA uses a disposable profile. No user accounts or saved credentials are touched.
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, readFile, rm} from 'node:fs/promises';
+import {cp, mkdtemp, mkdir, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -11,7 +11,7 @@ const app = path.join(root, 'dist/Kumo.app');
 const eid = (await readFile(path.join(root, 'config/extension-id.txt'), 'utf8')).trim();
 const runtime = await mkdtemp(path.join(tmpdir(), 'kumo-qa-'));
 const profile = path.join(runtime, 'profile');
-const extension = path.join(app, 'Contents/Resources/KumoExtension');
+const extension = path.join(runtime, 'kumo-extension');
 const output = path.join(root, 'dist/screenshots'); await mkdir(output, {recursive: true});
 const errors = [];
 const server = createServer((req, res) => {
@@ -29,6 +29,7 @@ const launch = () => chromium.launchPersistentContext(profile, {
   env: {...process.env, KUMO_AGENT_DIR: path.join(runtime, 'agents')}, viewport: {width: 1440, height: 960}
 });
 try {
+  await cp(path.join(app, 'Contents/Resources/KumoExtension'), extension, {recursive: true});
   context = await launch();
   context.setDefaultTimeout(15000);
   const metadata = JSON.parse(await readFile(path.join(extension, 'build-info.json'), 'utf8'));

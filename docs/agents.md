@@ -2,36 +2,45 @@
 
 Kumo includes a local MCP server with eight browser tools: list granted tabs, open a tab, navigate within a granted origin, read a page snapshot, click, fill a text field, scroll, and close a granted tab. The code is in `agent-bridge/` and uses Node.js built-ins; no npm install is required. Node.js 22 or later and macOS or another Unix system are required.
 
-The agent runs in the official Codex or Claude Code client and keeps its own account authentication. Codex supports ChatGPT subscription sign-in and API-key sign-in; workspace permissions still apply. [Official OpenAI authentication documentation](https://learn.chatgpt.com/docs/auth).
+The agent runs in **Codex Desktop or Claude Desktop**, using the account already signed into that client. Kumo supplies a local MCP browser toolset. Account access and organization policies remain with the chosen client; the bridge does not call provider APIs or import account tokens.
 
-Claude Code supports eligible personal subscriptions and Team/Enterprise accounts through its own login flow. Use the account and billing method you normally use with Claude Code. [Official Claude Code authentication documentation](https://code.claude.com/docs/en/authentication).
+## Desktop setup
 
-Kumo does not import provider tokens, read CLI credential stores, turn a consumer subscription into an API key, or offer a separate provider login implementation. The browser bridge itself does not call either provider API. Account eligibility, organization policies, and billing remain with the chosen official client.
+Install Node.js 22 or later, then open the packaged Kumo app once so macOS registers it. In Kumo's agent settings, copy the setup command for your desktop client. The commands work independently of the source checkout and the application's installation folder:
 
-## Setup
+```sh
+open -n -b app.kumo.browser --args --kumo-connect-codex-desktop
+open -n -b app.kumo.browser --args --kumo-connect-claude-desktop
+```
 
-1. Open `chrome://extensions` in Kumo, enable developer mode, and find the Kumo extension ID.
-2. Install its Native Messaging host, using the same user-data directory that Kumo was launched with:
+Run the command for each client you want to connect. Fully quit Claude Desktop before its setup command, then open it again afterward so it loads the new configuration. Setup installs a private copy of the bridge in `~/.kumo/agents/server/`. Its launcher resolves Node at runtime rather than recording the developer's Node or checkout path. The clients start this installed bridge over standard input/output, using this portable command:
 
-   ```sh
-   node agent-bridge/cli.mjs install \
-     --extension-id YOUR_32_LETTER_EXTENSION_ID \
-     --browser-profile "$HOME/Library/Application Support/Kumo"
-   ```
+```sh
+/bin/sh -c 'exec "$HOME/.kumo/agents/server/run" mcp'
+```
 
-   The installer also accepts `--manifest-path /absolute/path/com.kumo.agent_bridge.json` instead of `--browser-profile` when your browser uses a different host lookup directory. Installation writes a host manifest, a private launcher, and Kumo-specific MCP configuration snippets. It does not modify existing Codex or Claude configurations or run an agent task.
+- **Codex Desktop:** setup finds the official Codex CLI, including the copy inside the desktop app, and uses `codex mcp add` to register `kumo`. The desktop app, CLI and IDE share the host's MCP configuration. Existing unrelated servers remain configured. [Official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+- **Claude Desktop:** setup registers `mcpServers.kumo` in `~/Library/Application Support/Claude/claude_desktop_config.json`, preserving other configuration entries and making a private backup before changes. This configures Claude Desktop directly. Organization policy may disable local MCP servers. [Claude Desktop local MCP documentation](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
 
-3. Inspect the generated configuration paths printed by the installer. By default they are:
+Kumo keeps the sealed extension source inside the app and loads a verified, versioned copy from its private profile. Chromium writes generated rule indexes into that runtime copy, preserving the app's signature. Each new source version gets its own directory so an active browser's extension code is not overwritten.
 
-   - `~/.kumo/agents/codex-config.toml`: merge this MCP table into your chosen Codex configuration, or add the displayed command through its MCP settings.
-   - `~/.kumo/agents/claude-mcp.json`: supply this with `claude --mcp-config "$HOME/.kumo/agents/claude-mcp.json"`, or add the server to your chosen Claude Code configuration.
+Reload Codex's MCP connections or start a new chat after installation; some versions require an application restart. Open Claude Desktop after completing its quit-and-setup sequence. Setup does not quit an active client or start an agent task. Check that the client lists the `kumo` server and its `browser_*` tools. If Claude's entry disappears after a configuration change, fully quit Claude, rerun its Kumo setup and reopen it.
 
-   Both clients support local stdio MCP servers. The Codex desktop app, CLI, and IDE extension can share host configuration; remote web/cloud clients need their own supported connection path. [Official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli), [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
+In Kumo's agent settings, select the tabs you want to share, then choose **Allow selected tabs** and approve the website permissions. Enable new tabs only if you want the agent to create them. Ask your desktop client to use `browser_tabs` first. Access starts disabled and expires when the browser session ends or the bridge disconnects.
 
-4. In Kumo settings, enable agent control and grant the specific tabs you want to share. Grant website access when requested. Allow new tabs only if you want the agent to create tabs. Control starts disabled, and grants expire when the browser session ends or the bridge disconnects.
-5. In your chosen agent, ask it to use `browser_tabs` first. That returns only granted tabs. A safe first task is to summarize the visible content of a page you selected.
+This supplies Kumo's MCP toolset to local desktop clients. It does not register Kumo as Chrome in a client's separate built-in computer-use browser integration. Remote/cloud clients require a separately supported transport; Kumo does not expose a public listener.
 
-For a separate development profile, set `KUMO_AGENT_DIR` to a short absolute directory before running the installer and use the generated snippets for that profile. A runtime supports one connected Kumo browser profile at a time. A different runtime directory isolates another profile and its local token.
+### Development profiles
+
+From a source checkout, install the host for a disposable profile with:
+
+```sh
+./agent-bridge/run install \
+  --extension-id YOUR_32_LETTER_EXTENSION_ID \
+  --browser-profile "$HOME/Library/Application Support/Kumo"
+```
+
+Plain `install` writes the Native Messaging registration and manual MCP snippets. Add `--provider codex-desktop`, `--provider claude-desktop`, or `--provider all` to configure desktop clients. Desktop configuration uses the standard runtime in `~/.kumo/agents/`. For isolated development profiles, plain installation supports `KUMO_AGENT_DIR` set to a short absolute private directory and `--manifest-path` as an alternative to `--browser-profile`. Each runtime supports one connected browser profile.
 
 ## Access boundaries
 
@@ -79,7 +88,7 @@ Run:
 node --test agent-bridge/test/*.test.mjs
 ```
 
-The 10 bridge tests exercise actual Unix sockets, token rejection, file modes, disabled state, tab/origin grants, discovery filtering, revocation during a request, timeouts, reconnect reset, native frame parsing, MCP schemas, and a Native Messaging host plus MCP subprocess exchange. The 35 extension-agent tests exercise the real service-worker and newtab handlers, synchronous MV3 listener registration, displayed-origin binding, permission and navigation races, atomic multi-tab grants, malformed grant rejection, revocation races, tokenized sensitive fields, snapshot filtering, and Store origin/ID/CRX3 request handling. Eight additional Store-helper tests cover its page UI and document confirmation. The full JavaScript suite now has 102 passing tests, including 36 phishing regressions; the [port validation](security-audits/2026-10-19/phishlang-port.md) also records a fresh packaged-browser agent check.
+The bridge tests exercise actual Unix sockets, token rejection, file modes, disabled state, tab/origin grants, discovery filtering, revocation during a request, timeouts, reconnect reset, native frame parsing, MCP schemas, and a Native Messaging host plus MCP subprocess exchange. The extension-agent tests exercise the real service-worker and newtab handlers, synchronous MV3 listener registration, displayed-origin binding, permission and navigation races, atomic multi-tab grants, malformed grant rejection, revocation races, tokenized sensitive fields, snapshot filtering, and Store origin/ID/CRX3 request handling. Store-helper tests also cover page UI and document confirmation. Portable Desktop setup tests cover copied runtime operation, client configuration, relocation, preservation of unrelated settings, and unsafe file rejection.
 
 Real-browser integration QA also passed against the packaged Chromium runtime:
 

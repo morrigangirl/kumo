@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import {execFile as execFileCallback, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtemp, mkdir, open, readFile, writeFile, readdir, rm} from 'node:fs/promises';
+import {cp, mkdtemp, mkdir, open, readFile, writeFile, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -96,7 +96,7 @@ const bundleId = `app.kumo.extensionqa.${suffix}`;
 const profile = path.join(runtime, 'profile');
 const engine = path.join(app, 'Contents/MacOS/Chromium');
 const launcher = path.join(app, 'Contents/MacOS/KumoExtensionQA');
-const bundledExtension = path.join(app, 'Contents/Resources/KumoExtension');
+const bundledExtension = path.join(runtime, 'kumo-extension');
 const statePath = path.join(runtime, 'qa-state.json');
 const netLogPath = updateCheck ? path.join(runtime, 'update-check-netlog.json') : undefined;
 let child, browser, context, optionsPage, appearancePage, input, cleanupPromise;
@@ -403,6 +403,7 @@ try {
   assert(sourceExecutable && path.basename(sourceExecutable) === sourceExecutable && !['.', '..'].includes(sourceExecutable),
     'The original app must declare a local executable basename.');
   await execFile('ditto', ['--norsrc', '--noextattr', original, app]);
+  await cp(path.join(original, 'Contents/Resources/KumoExtension'), bundledExtension, {recursive: true});
   const plist = path.join(app, 'Contents/Info.plist');
   for (const [key, value] of Object.entries({CFBundleExecutable: 'KumoExtensionQA',
     CFBundleIdentifier: bundleId, CFBundleName: displayName, CFBundleDisplayName: displayName}))

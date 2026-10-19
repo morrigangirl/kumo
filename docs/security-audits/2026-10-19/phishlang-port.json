@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "checkedAtUtc": "2026-10-19T16:41:51.542251+00:00",
   "status": "local-development-port-verified",
-  "app": "/Volumes/Creative/software-code-utilities/kumo-browser/dist/Kumo.app",
+  "app": "dist/Kumo.app",
   "enablePath": "Kumo Settings > Privacy & security > Enable local warnings",
   "defaultEnabled": false,
   "engine": {
@@ -115,7 +115,7 @@
     "artifactReview": {
       "passed": true,
       "checkedAt": "2026-10-19T16:41:02.211656+00:00",
-      "app": "/Volumes/Creative/software-code-utilities/kumo-browser/dist/Kumo.app",
+      "app": "dist/Kumo.app",
       "extensionSourceEquality": true,
       "modelAssetEquality": true,
       "modelLockAndRightsMetadata": true,
@@ -634,11 +634,11 @@
       "bytes": 422,
       "sha256": "e136ee6389af876f69a1c8fc669da5022cd1d615f489bee4edd5e62b6c77b95e"
     },
-    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Volumes/Creative/software-code-utilities/kumo-browser/scripts/build_receipt.cpython-39.pyc": {
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/<checkout>/scripts/build_receipt.cpython-39.pyc": {
       "bytes": 11955,
       "sha256": "990b0fe0a7dbbc8ca580451595d44ffc6e4d71470f46759b530c0e84520e7cab"
     },
-    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Volumes/Creative/software-code-utilities/kumo-browser/scripts/source.cpython-39.pyc": {
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/<checkout>/scripts/source.cpython-39.pyc": {
       "bytes": 23838,
       "sha256": "9e052f98094020c7a8e9b89d9ee76f2a5eec782683bab964a86c21c7190edfce"
     },
@@ -842,5 +842,10 @@
       "bytes": 189,
       "sha256": "e2fb3c23320d956ae680352688953f1e0ca4e6b0aba6a787cd4780aaef1a8ea3"
     }
+  },
+  "exportNormalization": {
+    "reason": "Machine-specific checkout paths replaced with relative paths; evidence hashes refer to original private artifacts.",
+    "originalExportSHA256": "e7775c77ccb5e33cd11602b50a68da8c9b220840d5d16ad6c2cfcfd255d6c4bd",
+    "originalExportPath": ".cache/qa/desktop-connectivity-2026-10-19/original-audit-exports/phishlang-port.json"
   }
 }

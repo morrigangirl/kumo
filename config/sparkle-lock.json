@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "version": "2.10.0",
+  "repository": "sparkle-project/Sparkle",
+  "archiveURL": "https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-2.10.0.tar.xz",
+  "archiveSHA256": "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c",
+  "archiveBytes": 16319840,
+  "minimumSystemVersion": "12.0"
+}

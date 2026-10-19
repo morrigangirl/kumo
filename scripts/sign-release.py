@@ -250,6 +250,40 @@ def remove_stale_tickets(app):
     return removed
 
 
+def configure_release_updater(staged, notarization_requested):
+    """Enable the signed updater only in the separately notarized release copy."""
+    release_api = runpy.run_path(str(ROOT / "scripts/github-release.py"))
+    release = release_api["load_config"]()
+    resources = staged / "Contents/Resources"
+    policy_path = resources / "kumo-update-config.json"
+    policy = json.loads(policy_path.read_text())
+    if any(policy.get(key) != value for key, value in release.items()):
+        raise RuntimeError("Packaged updater configuration differs from the selected release.")
+    info = bundle_info(staged)
+    expected = {
+        "CFBundleShortVersionString": release["version"], "CFBundleVersion": release["build"],
+        "SUFeedURL": release["feedURL"], "SUPublicEDKey": release["publicEDKey"],
+        "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True,
+        "SUSignedFeedFailureExpirationInterval": 0, "SUEnableSystemProfiling": False,
+        "SUAllowsAutomaticUpdates": False,
+    }
+    if any(info.get(key) != value or type(info.get(key)) is not type(value) for key, value in expected.items()):
+        raise RuntimeError("Packaged updater trust or version metadata does not match the release.")
+    build_path = resources / "KumoExtension/build-info.json"
+    build = json.loads(build_path.read_text())
+    release_api["validate_public_model_scope"](build)
+    updates = build.get("appUpdates", {})
+    if (updates.get("included") is not True or updates.get("repository") != release["repository"]
+            or updates.get("feedURL") != release["feedURL"] or updates.get("version") != release["version"]
+            or updates.get("build") != release["build"]):
+        raise RuntimeError("Packaged update status does not match the release configuration.")
+    policy["enabled"] = bool(notarization_requested)
+    updates["ready"] = bool(notarization_requested)
+    build["signingMode"] = "developer-id"
+    policy_path.write_text(json.dumps(policy, indent=2) + "\n")
+    build_path.write_text(json.dumps(build, indent=2) + "\n")
+
+
 def sign_release(app, output, items, config, identity, profile_bytes, notary_profile, source_hash):
     if running_apps([app, output]) or output.exists():
         raise RuntimeError("Quit the input/output app and choose a new output path before signing.")
@@ -262,6 +296,7 @@ def sign_release(app, output, items, config, identity, profile_bytes, notary_pro
         if signing_metadata(staged)["cdhash"] != source_hash:
             raise RuntimeError("The input app changed during release preparation; no release was signed.")
         remove_stale_tickets(staged)
+        configure_release_updater(staged, bool(notary_profile))
         # Never inherit an upstream/development provisioning profile.
         for name in ("embedded.provisionprofile", "embedded.mobileprovision"):
             for file in staged.rglob(name):
@@ -342,6 +377,11 @@ def main():
         blockers.append("Input must be the completed packaged Kumo app with the selected bundle identifier and Swift launcher.")
     build_file = app / "Contents/Resources/KumoExtension/build-info.json"
     build = json.loads(build_file.read_text())
+    try:
+        release_api = runpy.run_path(str(ROOT / "scripts/github-release.py"))
+        release_api["validate_public_model_scope"](build)
+    except RuntimeError as error:
+        blockers.append(str(error))
     if build.get("sourceCompiledLocally") is not True:
         blockers.append("Production release requires Kumo's locally compiled source build; this app is the upstream preview.")
     source_version = json.loads((ROOT / "config/source-lock.json").read_text())["chromiumVersion"]

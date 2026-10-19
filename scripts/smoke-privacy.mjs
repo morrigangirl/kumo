@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {execFile as execFileCallback, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
+import {cp, mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -35,10 +35,12 @@ const execFile = promisify(execFileCallback);
 // Kumo profile. The returned real profile path is replaced and never accessed.
 const config = JSON.parse((await execFile(path.join(app, 'Contents/MacOS/Kumo'), ['--kumo-print-config'])).stdout);
 assert.equal(config.engine, path.join(app, 'Contents/MacOS/Chromium'));
-assert.equal(config.extension, path.join(app, 'Contents/Resources/KumoExtension'));
+assert.equal(config.bundledExtension, path.join(app, 'Contents/Resources/KumoExtension'));
+assert(config.extension.startsWith(path.join(config.profile, 'ExtensionRuntime') + path.sep));
 assert(Array.isArray(config.flags) && config.flags.every(flag => typeof flag === 'string'));
 const temporary = await mkdtemp(path.join(tmpdir(), 'kumo-privacy-qa-'));
 const profile = path.join(temporary, 'profile');
+const extension = path.join(temporary, 'kumo-extension');
 const logPath = path.join(temporary, 'default-netlog.json');
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 // Explicit, finite coverage: exact domains or their subdomains only. Third-party
@@ -109,6 +111,7 @@ async function closeNativeBrowser() {
 }
 
 try {
+  await cp(config.bundledExtension, extension, {recursive: true});
   await mkdir(path.join(profile, 'Default'), {recursive: true, mode: 0o700});
   // Exactly the fresh-profile preference values in native/launcher/main.swift.
   await writeFile(path.join(profile, 'Default/Preferences'), JSON.stringify({
@@ -118,7 +121,7 @@ try {
   }), {mode: 0o600});
   const profileFlags = config.flags.filter(flag => flag.startsWith('--user-data-dir='));
   assert.equal(profileFlags.length, 1, 'The actual launcher must declare exactly one profile flag.');
-  const flags = config.flags.map(flag => flag.startsWith('--user-data-dir=') ? `--user-data-dir=${profile}` : flag);
+  const flags = config.flags.map(flag => flag.startsWith('--user-data-dir=') ? `--user-data-dir=${profile}` : flag.startsWith('--load-extension=') ? `--load-extension=${extension}` : flag);
   for (const forbidden of forbiddenFlags)
     assert(!flags.some(flag => flag === forbidden || flag.startsWith(`${forbidden}=`)), 'Normal launcher must not suppress or redirect network traffic for this capture.');
   flags.push('--use-mock-keychain', '--password-store=basic', '--remote-debugging-port=0',

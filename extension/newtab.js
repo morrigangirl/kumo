@@ -13,6 +13,18 @@ for (const card of document.querySelectorAll('[data-engine-status]')) {
   card.querySelector('[data-engine-status-title]').textContent = securityStatus.title;
   card.querySelector('[data-engine-status-versions]').textContent = securityStatus.versions;
 }
+const appUpdates = buildInfo.appUpdates;
+const appUpdatesIncluded = appUpdates?.included === true && appUpdates.provider === 'github-releases' && appUpdates.repository === 'morrigangirl/kumo';
+const appUpdateVersion = appUpdatesIncluded ? `Kumo ${appUpdates.version || 'unavailable'} · Build ${appUpdates.build || 'unavailable'}` : 'App version and build are unavailable.';
+const appUpdateStatus = appUpdatesIncluded && appUpdates.ready === true
+  ? 'Release channel: GitHub Releases. The native updater verifies signed updates before installation.'
+  : 'Local development build. Release updates require Developer ID signing, notarization and a configured update verification key.';
+$('appVersion').textContent = appUpdatesIncluded ? String(appUpdates.version || 'Developer preview') : 'Developer preview';
+for (const card of document.querySelectorAll('[data-app-updates]')) {
+  card.querySelector('[data-app-update-version]').textContent = appUpdateVersion;
+  card.querySelector('[data-app-update-status]').textContent = appUpdateStatus;
+  card.querySelector('[data-app-check-updates]').disabled = !appUpdatesIncluded;
+}
 if (buildInfo.engineVersion) {
   $('engineDescription').textContent = `A native macOS browser using Chromium ${buildInfo.engineVersion} with the ungoogled-chromium patch set, a Swift launcher, and local customization. ${buildInfo.sourceCompiledLocally ? 'This engine was compiled locally with Kumo’s native source integration.' : 'This preview packages a verified upstream binary; the repository includes a separate source-build path.'}`;
 }
@@ -65,7 +77,65 @@ function panel(name) {
   for (const el of document.querySelectorAll('.panel')) el.hidden = el.id !== `panel-${name}`;
   for (const el of document.querySelectorAll('[data-panel]')) el.classList.toggle('selected', el.dataset.panel === name);
   toast('');
-  if (name === 'privacy') void refreshPhishingStatus();
+  if (name === 'privacy') { void refreshPhishingStatus(); void refreshMalwareStatus(); void refreshDownloadProtectionStatus(); }
+}
+async function refreshDownloadProtectionStatus() {
+  if (!$('download-protection-status')) return;
+  if (buildInfo.malwareProtection?.downloadAntivirusIncluded !== true) {
+    $('download-protection-state').textContent = 'Source build required';
+    $('download-protection-status').textContent = 'This package does not include the native download-completion gate. Build the current Kumo source target to enable download antivirus.';
+    return;
+  }
+  try {
+    const status = await chrome.runtime.sendMessage({type: 'downloadProtection.status'});
+    if (!status || status.error || status.id !== 'settings-status') throw new Error('Status unavailable.');
+    $('download-protection-state').textContent = status.available ? 'Ready' : status.installed ? 'Definitions need attention' : 'Setup required';
+    $('download-protection-status').textContent = status.available ? 'Local download scanning is ready. Normal downloads wait for a scan before completion and automatic opening.' : status.installed ? 'The scanner is installed, but its definitions are unavailable or outdated. Downloads will be blocked until scanning is ready. Run the definitions update command.' : 'Install the signed local scanner and download its definitions. Downloads will be blocked while scanning is unavailable.';
+    if (status.installed) $('download-protection-status').textContent += status.automaticUpdates ? ' Automatic definition updates are configured for every eight hours.' : ' Automatic definition updates are off; run scanner setup to enable them.';
+  } catch {
+    $('download-protection-state').textContent = 'Unavailable';
+    $('download-protection-status').textContent = 'Download protection status is unavailable. Relaunch Kumo and check again.';
+  }
+}
+if ($('download-protection-refresh')) $('download-protection-refresh').onclick = refreshDownloadProtectionStatus;
+for (const [id, name] of [['download-protection-setup', 'downloadScannerSetupCommand'], ['download-protection-update', 'downloadScannerUpdateCommand']]) {
+  if (!$(id)) continue;
+  $(id).onclick = async () => {
+    const command = buildInfo[name];
+    if (!command) { toast('Package Kumo to include the scanner setup tools.'); return; }
+    try { await navigator.clipboard.writeText(command); toast('Command copied. Run it in Terminal; the official installer may ask for administrator approval.'); }
+    catch { toast(command); }
+  };
+}
+async function refreshMalwareStatus() {
+  const description = $('malware-status');
+  if (!description) return;
+  try {
+    const status = await chrome.runtime.sendMessage({type: 'malware.status'});
+    if (!status || status.ok !== true) throw new Error('Protection status is unavailable.');
+    $('malware-state').textContent = !status.available ? 'Unavailable' : !status.enabled ? 'Off' : status.stale ? 'List outdated' : 'On';
+    const date = status.modifiedAt && Number.isFinite(Date.parse(status.modifiedAt)) ? new Date(status.modifiedAt).toLocaleString() : 'unavailable';
+    description.textContent = !status.available ? 'The malware list could not be loaded. Sites are not protected by this layer.' : !status.enabled ? 'Known-malware-domain blocking is off.' : `${Number(status.domainCount || 0).toLocaleString()} listed domains and their subdomains are blocked before connections. List updated ${date}.${status.stale ? ' The list is outdated; existing rules remain active. Update it now.' : ''}`;
+    if (status.lastError) description.textContent += ' The last list update failed. Existing rules are retained; try updating again.';
+    $('malware-enable').disabled = !status.available || status.enabled;
+    $('malware-disable').disabled = !status.enabled;
+    $('malware-update').disabled = !status.available || !status.enabled;
+  } catch {
+    $('malware-state').textContent = 'Unavailable';
+    description.textContent = 'Protection status is unavailable. Relaunch Kumo and check again.';
+  }
+}
+for (const [id, action] of [['malware-enable', 'enable'], ['malware-disable', 'disable'], ['malware-update', 'update']]) {
+  if (!$(id)) continue;
+  $(id).onclick = async () => {
+    $(id).disabled = true;
+    try {
+      const result = await chrome.runtime.sendMessage({type: `malware.${action}`});
+      if (result.error) throw new Error(result.error);
+      toast(action === 'update' ? 'Malware list checked.' : action === 'enable' ? 'Known-malware-domain blocking enabled.' : 'Known-malware-domain blocking turned off.');
+    } catch (error) { toast(error.message); }
+    finally { await refreshMalwareStatus(); }
+  };
 }
 async function refreshPhishingStatus() {
   const status = await chrome.runtime.sendMessage({type: 'phishing.status'});
@@ -88,7 +158,12 @@ for (const id of ['openSettings', 'customize', 'themesCard']) $(id).onclick = ()
 for (const button of document.querySelectorAll('[data-panel]')) button.onclick = () => panel(button.dataset.panel);
 for (const button of document.querySelectorAll('[data-close]')) button.onclick = () => $(button.dataset.close).close();
 for (const button of document.querySelectorAll('[data-native]')) button.onclick = () => nativePage(button.dataset.native);
-for (const button of document.querySelectorAll('[data-engine-releases]')) button.onclick = () => nativePage('https://github.com/ungoogled-software/ungoogled-chromium/releases');
+for (const button of document.querySelectorAll('[data-app-releases]')) button.onclick = () => nativePage('https://github.com/morrigangirl/kumo/releases');
+for (const button of document.querySelectorAll('[data-app-check-updates]')) button.onclick = async () => {
+  const command = 'open -n -b app.kumo.browser --args --kumo-check-for-updates';
+  try { await navigator.clipboard.writeText(command); toast('Command copied. Run it in Terminal to open Kumo’s native updater.'); }
+  catch { toast(command); }
+};
 $('nativeSearch').onclick = () => nativePage('chrome://settings/searchEngines');
 if (document.getElementById('enablePhishing')) {
   document.getElementById('enablePhishing').onclick = async () => {
@@ -167,7 +242,7 @@ $('revokeAgents').onclick = async () => { await chrome.runtime.sendMessage({type
 for (const [id, provider] of [['copyCodex', 'codex'], ['copyClaude', 'claude']]) $(id).onclick = async () => {
   const command = buildInfo[`${provider}SetupCommand`];
   if (!command) { toast('Build Kumo.app to generate the local client setup commands.', 'agentToast'); return; }
-  try { await navigator.clipboard.writeText(command); toast(`Setup command copied. Run it in Terminal to configure ${provider === 'codex' ? 'Codex' : 'Claude Code'}.`, 'agentToast'); } catch { toast(command, 'agentToast'); }
+  try { await navigator.clipboard.writeText(command); toast(`Setup command copied. Run it in Terminal to configure ${provider === 'codex' ? 'Codex Desktop' : 'Claude Desktop'}.`, 'agentToast'); } catch { toast(command, 'agentToast'); }
 };
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'session' && (changes.agentAccess || changes.bridgeError)) agentStatus(); if (area === 'local' && changes.preferences) { settings = validateSettings(changes.preferences.newValue); render(); } });
 render(); await agentStatus();
