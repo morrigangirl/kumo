@@ -5,7 +5,7 @@ MobileBERT classifier. It contains no network client, page fetcher, Python runti
 browser-control tool, or credential reader. The extension supplies bounded,
 preprocessed page text; the host never receives filled form values by design.
 
-The helper is a dedicated app at `Kumo.app/Contents/Helpers/KumoPhishing.app`.
+The integrated development helper is a dedicated app at `Kumo.app/Contents/Helpers/KumoPhishing.app`.
 Its executable is `Contents/MacOS/KumoPhishingHost`; resources are fixed at that
 helper's `Contents/Resources/PhishLang/{PhishLang.mlmodelc,vocab.txt,model-info.json}`. Chrome
 Native Messaging must pass exactly the allowed Kumo extension origin as its sole
@@ -67,3 +67,27 @@ and trained weights remain unresolved. Model packaging is local-development-only
 until those artifact rights are established. This Swift implementation is original
 bridge/tokenizer code; upstream model attribution and conversion metadata travel
 with the model resources. MobileBERT's base model is Apache 2.0.
+
+
+## Separate Kumo extension
+
+The optional [standalone add-on](../../addons/phishlang/README.md) packages the
+same bounded scanner and native classifier independently of Kumo.app. Its
+extension ID is `ejmohaggcahgfhmgkdiicnmmlpnhgfmi`; its native host name is
+`com.kumo.phishlang`. The companion is `Kumo PhishLang.app` (`app.kumo.phishlang`).
+A sealed Info.plist selects this fixed standalone origin. An absent selection
+retains the integrated Kumo origin; malformed or unrecognized selections fail
+closed before reading Native Messaging input.
+
+`KumoPhishLangSetup` is a separate, signed Swift installation tool. It checks the
+companion’s strict Developer ID signature, team, secure timestamp and exact
+sandbox entitlement, then installs the companion and its sealed extension copy
+to stable user-owned paths. No administrator password, Python runtime, daemon or
+login item is required. Custom test paths require all three target overrides;
+linked, unowned and unexpected filesystem contents are rejected. Installation
+and removal preserve unrelated browser data and native hosts.
+
+Build with `scripts/package-phishlang-extension.py`. Run native regression tests
+through the same Swift package; its setup tests use temporary fixtures and an
+injected signature verifier. The browser smoke test separately exercises the
+actual Developer ID verifier and real sandboxed inference on the packaged bytes.

@@ -10,8 +10,9 @@ class Event {
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; }
 async function harness(t, {stored = false, permission = true, probability = 0.99,
-  buildInfo = {phishingProtection: {included: true}}, registered = false, openTabs = [], storedWarnings = {}} = {}) {
-  const id = 'eldkgppmnhligdekahicdcdndcoongio', base = `chrome-extension://${id}/`;
+  buildInfo = {phishingProtection: {included: true}}, registered = false, openTabs = [], storedWarnings = {},
+  configuration = {}, nativeAvailable = true, nativeConnectFailure = false, extensionId = 'eldkgppmnhligdekahicdcdndcoongio'} = {}) {
+  const id = extensionId, base = `chrome-extension://${id}/`;
   const local = {phishingProtection: {enabled: stored}}, session = {}, scripts = new Map(), tabs = new Map();
   if (registered) scripts.set('kumo-local-phishing', {id: 'kumo-local-phishing'});
   if (Object.keys(storedWarnings).length) session.phishingWarnings = structuredClone(storedWarnings);
@@ -20,12 +21,13 @@ async function harness(t, {stored = false, permission = true, probability = 0.99
     nativeGate: null, storeGate: null, beforeStore: null, beforeGet: null, beforeFrame: null, revision: 0, clock: 100000, counter: 0};
   const api = {
     runtime: {id, getURL: path => base + path, connectNative(name) {
-      assert.equal(name, 'com.kumo.phishing');
+      assert.equal(name, configuration.nativeHost || 'com.kumo.phishing');
+      if (nativeConnectFailure) throw new Error('Native host missing');
       const port = {onMessage: new Event(), onDisconnect: new Event(), disconnect() {}, postMessage(message) {
         h.sent.push(structuredClone(message));
         void (async () => {
           if (h.nativeGate && message.type === h.nativeGate.type) await h.nativeGate.promise;
-          const reply = message.type === 'status' ? {id: message.id, ok: true, available: true, modelVersion: 'a'.repeat(40)} :
+          const reply = message.type === 'status' ? {id: message.id, ok: true, available: nativeAvailable, modelVersion: 'a'.repeat(40)} :
             {id: message.id, ok: true, available: true, probability: h.probability, windows: 1, tokenCount: 30, coverageLimited: false};
           await port.onMessage.emit(reply);
         })();
@@ -54,11 +56,11 @@ async function harness(t, {stored = false, permission = true, probability = 0.99
     webNavigation: {async getFrame({tabId}) { if (h.beforeFrame) await h.beforeFrame(tabId); const tab = tabs.get(tabId); return {documentId: tab.documentId, url: tab.url}; }},
   };
   h.api = api;
-  h.protection = createPhishingProtection(api, {now: () => h.clock, randomId: () => `qa-${++h.counter}`,
+  h.protection = createPhishingProtection(api, {...configuration, now: () => h.clock, randomId: () => `qa-${++h.counter}`,
     readBuildInfo: async () => { if (buildInfo instanceof Error) throw buildInfo; return buildInfo; }});
   t.after(() => h.protection.shutdown());
   await h.protection.ready;
-  h.internal = {id, url: base + 'newtab.html#settings', tab: {id: 99}, frameId: 0, documentLifecycle: 'active'};
+  h.internal = {id, url: base + (configuration.settingsPath || 'newtab.html') + '#settings', tab: {id: 99}, frameId: 0, documentLifecycle: 'active'};
   h.message = (value, sender = h.internal) => h.protection.handleMessage(value, sender);
   h.enable = () => h.message({type: 'phishing.enable'});
   h.disable = () => h.message({type: 'phishing.disable'});
@@ -294,4 +296,41 @@ test('request concurrency and repeated-page work are bounded with explicit parti
   assert.equal((await h.scan(sender)).status, 'limited');
   for (let count = 0; count < 7; count++) { h.clock += 2000; assert.equal((await h.scan(sender)).status, 'no-signal'); }
   h.clock += 2000; assert.equal((await h.scan(sender)).status, 'limited');
+});
+
+
+test('standalone identity accepts only its configured settings page and native host', async t => {
+  const h = await harness(t, {extensionId: 'ejmohaggcahgfhmgkdiicnmmlpnhgfmi', configuration: {
+    nativeHost: 'com.kumo.phishlang', settingsPath: 'settings.html', leaveURL: 'about:blank',
+  }});
+  for (const url of [h.api.runtime.getURL('newtab.html'), h.api.runtime.getURL('settings.html/other'),
+    'https://example.com/settings.html', 'chrome-extension://eldkgppmnhligdekahicdcdndcoongio/settings.html']) {
+    await assert.rejects(h.message({type: 'phishing.enable'}, {...h.internal, url}), /settings/);
+  }
+  await assert.rejects(h.message({type: 'phishing.enable'}, {...h.internal, id: 'eldkgppmnhligdekahicdcdndcoongio'}), /Unsupported/);
+  assert.deepEqual(await h.enable(), {ok: true, enabled: true});
+  assert.equal(h.sent[0].type, 'status'); assert.equal(h.scripts.size, 1);
+  const sender = h.addTab(); await h.scan(sender);
+  const url = h.tabs.get(1).url, token = new URL(url).hash.slice(1);
+  await h.message({type: 'phishing.leave', token}, {...sender, url});
+  assert.equal(h.tabs.get(1).url, 'about:blank');
+  assert.deepEqual(h.session.phishingWarnings, {});
+});
+
+test('default integrated warning Leave still returns to the built-in new tab', async t => {
+  const h = await harness(t); await h.enable(); const sender = h.addTab(); await h.scan(sender);
+  const url = h.tabs.get(1).url, token = new URL(url).hash.slice(1);
+  await h.message({type: 'phishing.leave', token}, {...sender, url});
+  assert.equal(h.tabs.get(1).url, h.api.runtime.getURL('newtab.html'));
+});
+
+test('standalone missing companion errors give the configured install instructions', async t => {
+  for (const nativeConnectFailure of [false, true]) {
+    const h = await harness(t, {nativeAvailable: false, nativeConnectFailure, configuration: {
+      nativeHost: 'com.kumo.phishlang', settingsPath: 'settings.html', nativeUnavailableMessage: 'Install the local companion and retry.',
+    }});
+    await assert.rejects(h.enable(), /Install the local companion and retry/);
+    assert.equal(h.local.phishingProtection.enabled, false); assert.equal(h.scripts.size, 0);
+    assert.equal((await h.message({type: 'phishing.status'})).enabled, false);
+  }
 });

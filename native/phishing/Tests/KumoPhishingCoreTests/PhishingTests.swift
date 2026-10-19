@@ -21,6 +21,20 @@ final class PhishingTests: XCTestCase {
         XCTAssertFalse(HostProtocol.authorized(arguments: ["host", HostProtocol.allowedOrigin, "--resources", "/tmp"]))
     }
 
+    func testStandaloneCallerRequiresSealedDedicatedIdentityAndOrigin() {
+        let origin = HostProtocol.standaloneOrigin
+        XCTAssertTrue(HostProtocol.authorized(arguments: ["host", origin], bundleIdentifier: "app.kumo.phishlang", sealedOrigin: origin))
+        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", origin]))
+        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", HostProtocol.allowedOrigin], bundleIdentifier: "app.kumo.phishlang", sealedOrigin: origin))
+        for metadata: Any? in [nil, "", HostProtocol.allowedOrigin, origin.uppercased(), origin + "evil", [origin], true] {
+            XCTAssertFalse(HostProtocol.authorized(arguments: ["host", origin], bundleIdentifier: "app.kumo.phishlang", sealedOrigin: metadata))
+        }
+        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", origin, "--resources", "/tmp"], bundleIdentifier: "app.kumo.phishlang", sealedOrigin: origin))
+        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", origin], bundleIdentifier: "app.kumo.phishing", sealedOrigin: origin))
+        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", origin], bundleIdentifier: "unrelated.app", sealedOrigin: origin))
+        XCTAssertTrue(HostProtocol.authorized(arguments: ["host", HostProtocol.allowedOrigin], bundleIdentifier: "app.kumo.phishing"))
+    }
+
     func testBasicTokensMatchUncasedBERTSemantics() throws {
         let value = "HéLLo,\tWORLD! CAFÉ\u{2003}中文\u{0000}\u{FFFD} playing."
         XCTAssertEqual(MobileBERTTokenizer.basicTokens(value), ["hello", ",", "world", "!", "cafe", "中", "文", "playing", "."])

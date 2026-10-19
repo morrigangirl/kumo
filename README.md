@@ -62,6 +62,20 @@ The malware-enabled source build uses `build/source-155.0.8059.84-malware-001`. 
 | Web 1/2/3 | Chromium's ordinary web platform, including modern web apps, WebAssembly, WebGL/WebGPU and WebAuthn. Compatible wallet extensions may serve Web3 sites. No wallet, blockchain protocol handler, or IPFS gateway is bundled. |
 | TLS / post-quantum | Chromium/BoringSSL's supported modern TLS and hybrid post-quantum key agreement are inherited. No legacy insecure TLS is enabled. Server support and the actual handshake determine negotiated protection; PQ key agreement does not make the entire certificate ecosystem quantum-safe. |
 
+## Optional PhishLang extension
+
+[PhishLang for Kumo](addons/phishlang/README.md) can be built and installed as a
+separate Manifest V3 extension with its own signed, sandboxed native Core ML
+companion. Its installer provides a stable extension folder and dedicated native
+host without modifying Kumo.app. The model is included in the separate add-on;
+protection starts off and requires explicit website access. The browser’s public
+binary remains model-free.
+
+See the add-on instructions for installation, removal and model limitations.
+The developer-mode extension is loaded through `chrome://extensions`; it is not
+a Chrome Web Store listing. Python is used only to prepare/build the package.
+The installed runtime uses Swift and system Core ML.
+
 ## Native Apple AutoFill
 
 Website forms in Chromium are renderer controls, not AppKit `NSTextField` instances. The source integration adds an actual native username or secure password field that macOS recognizes. Its system menu exposes **AutoFill → Passwords** without the Apple Chrome extension's pairing protocol. macOS still controls unlocking and consent.

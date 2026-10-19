@@ -2,11 +2,25 @@ import Foundation
 
 public enum HostProtocol {
     public static let allowedOrigin = "chrome-extension://eldkgppmnhligdekahicdcdndcoongio/"
+    public static let standaloneOrigin = "chrome-extension://ejmohaggcahgfhmgkdiicnmmlpnhgfmi/"
     public static let maximumFrameBytes = 256 * 1024
     public static let maximumTextCharacters = 32_768
 
-    public static func authorized(arguments: [String]) -> Bool {
-        arguments.count == 2 && arguments[1] == allowedOrigin
+    /// The standalone caller is selected only by the helper's signed bundle metadata.
+    /// Neither argv, the environment nor a Native Messaging request can choose a caller.
+    public static func authorized(arguments: [String], bundleIdentifier: String? = nil, sealedOrigin: Any? = nil) -> Bool {
+        let expected: String
+        switch bundleIdentifier {
+        case "app.kumo.phishlang":
+            guard let value = sealedOrigin as? String, value == standaloneOrigin else { return false }
+            expected = standaloneOrigin
+        case nil, "app.kumo.phishing":
+            guard sealedOrigin == nil else { return false }
+            expected = allowedOrigin
+        default:
+            return false
+        }
+        return arguments.count == 2 && arguments[1] == expected
     }
 
     public static func readFrame(from handle: FileHandle) throws -> Data? {

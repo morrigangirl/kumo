@@ -1,5 +1,10 @@
 # Local phishing warnings
 
+For the optional, separately installed extension and native companion, see
+[PhishLang for Kumo](../addons/phishlang/README.md). The public browser binary
+continues to omit the model. The details below describe the original integrated
+development port and its model behavior.
+
 Kumo's development app includes a native macOS port of the pinned PhishLang
 MobileBERT classifier. Enable it in **Kumo Settings → Privacy & security → Enable
 local warnings**, then allow website access. It starts off. Turning it off stops

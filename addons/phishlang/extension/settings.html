@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kumo PhishLang</title><link rel="stylesheet" href="standalone.css"></head>
+<body><main>
+  <header><p class="eyebrow">KUMO PHISHLANG</p><h1>Local phishing warnings</h1><p class="intro">An optional extra check, running on this Mac.</p></header>
+  <section class="card" aria-labelledby="protectionHeading">
+    <div class="status-row"><h2 id="protectionHeading">Protection</h2><strong id="protectionStatus" class="status" data-tone="off" role="status">Loading…</strong></div>
+    <p id="phishingStatus">Checking extension status…</p>
+    <div class="actions"><button id="enablePhishing" disabled>Enable local warnings</button><button id="disablePhishing" class="secondary" disabled>Turn off and remove website access</button></div>
+    <p id="settingsError" class="error" role="alert"></p>
+    <dl><div><dt>Website access</dt><dd id="websiteAccess">Not granted</dd></div><div><dt>Model revision</dt><dd id="modelVersion">Not loaded</dd></div></dl>
+  </section>
+  <section class="card" aria-labelledby="pageHeading"><h2 id="pageHeading">Current page</h2><p id="pageResult">No page analysis while protection is off.</p></section>
+  <section class="details" aria-labelledby="expectHeading"><h2 id="expectHeading">Before you enable it</h2>
+    <p>Run <code>install.command</code> from the PhishLang add-on package to install the native companion. This extension starts off and asks for website access only when you enable it.</p>
+    <p>Page text and structure are analyzed locally. Filled fields, editable content, cookies and Apple Passwords are excluded. No page content goes to an online AI service. The companion starts on demand.</p>
+    <p><strong>Experimental.</strong> The model can miss phishing and flag legitimate pages. Pages are checked after they load; this does not prevent every credential theft, scan downloads or replace Kumo’s other security controls. Private tabs and embedded frames are excluded. An 8 GB Mac has not yet been qualified.</p>
+    <p class="attribution">Based on PhishLang by Sayak Saha Roy and Shirin Nilizadeh, UTA SPR Lab. Adapted for bounded, local Core ML inference. Model provenance and notices are supplied with this add-on.</p>
+  </section>
+</main><script type="module" src="settings.js"></script></body></html>

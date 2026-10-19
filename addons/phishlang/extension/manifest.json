@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Kumo PhishLang",
+  "version": "0.1.0",
+  "description": "Experimental, opt-in phishing warnings using a local PhishLang model on your Mac.",
+  "minimum_chrome_version": "124",
+  "incognito": "not_allowed",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "nativeMessaging",
+    "webNavigation"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "settings.html",
+  "action": {
+    "default_title": "Kumo PhishLang \u00b7 Local phishing warnings",
+    "default_popup": "settings.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self'; img-src 'self' data:;"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApLVvwe+Q6t32O+mmzfQyI7CaWMKxhKpbxo4A41OX+CGRyOheoK1rwJ2X8qy5o1j43mKPiEjmg7w/r2hP2HUOKM6Oix5y9zsA5z09Y9w3d05FhXkHNh4PZmhxdJkpRBOdrXymWb07C5jLh+vjAiQGkIcvcmirxtzoNKwEwTZB53Rmc/ybn6h+X9AgKzK+I1G4gxqIOxrt0MEZkZNOiyPIAArenaNOpkMAtzj4QK9YTyNxKbJprn5CwJbpNfWZyymqdBOCSaH5bXjzCmIonXD8CBhEY5QKB7JqEImMgKEw4gqO8yXtWO+yzI33x97eJXYnXYzRJ6KuM/EmO6EUY/4GcQIDAQAB"
+}
