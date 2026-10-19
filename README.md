@@ -2,11 +2,11 @@
 
 Kumo is a native Apple Silicon browser project based on Chromium, with Google browser identity, sync, telemetry integrations, and promotional services removed through ungoogled-chromium. It retains the native Chromium tab strip, omnibox, bookmarks, downloads, DevTools, extension APIs, site permissions, and web platform. Its Swift launcher starts Chromium directly; there is no Electron or webview browser shell.
 
-This repository contains Kumo's source, Chromium overlays, build recipes, tests and validation summaries. Upstream checkouts, downloaded model weights, threat-list snapshots and compiled applications are generated locally and excluded from Git. Evidence links under `build/`, `dist/` and `.cache/` refer to local development artifacts. Follow the [source-build instructions](docs/source-build.md), [local model preparation](docs/phishing-protection.md#build-and-checks) and [malware-feed preparation](docs/malware-protection.md#reproduce-the-snapshot) to reproduce the app.
+This repository contains Kumo's source, Chromium overlays, build recipes, tests and validation summaries. Upstream checkouts, downloaded model weights, threat-list snapshots and compiled applications are generated locally and excluded from Git. Evidence links under `build/`, `dist/` and `.cache/` refer to local development artifacts. Follow the [source-build instructions](docs/source-build.md), [malware-feed preparation](docs/malware-protection.md#reproduce-the-snapshot) and [GitHub release packaging](docs/github-releases.md) to reproduce the public binary without the experimental model. [Local model preparation](docs/phishing-protection.md#build-and-checks) is optional for development.
 
 The current developer app is compiled locally from the pinned **Chromium 155.0.8059.84** source. It includes Kumo's native Apple AutoFill integration and security corrections, with a completed-build receipt embedded in the signed app. See [source build details](docs/source-build.md).
 
-The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October 15 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html). The local source build replaces that preview with .84. App updates use signed [Kumo GitHub Releases](docs/github-releases.md), with a separate native Sparkle companion. The channel has not been published and remains disabled in Apple Development builds; production delivery requires Developer ID signing and notarization. Experimental local PhishLang warnings are included and start off; see [setup, model provenance and limitations](docs/phishing-protection.md).
+The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October 15 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html). The local source build replaces that preview with .84. App updates use signed [Kumo GitHub Releases](docs/github-releases.md), with a separate native Sparkle companion. The channel has not been published and remains disabled in Apple Development builds; production delivery requires Developer ID signing and notarization. The first public binary excludes the experimental PhishLang model and its native helper; domain blocking and ClamAV scanning remain included. Optional development builds can include the model; see [setup, model provenance and limitations](docs/phishing-protection.md).
 
 ## Run
 
@@ -25,7 +25,7 @@ For a separate preview QA copy, use
 use the same normal Kumo profile when launched normally. Use a disposable
 profile when testing an older engine.
 
-The selected Apple team is **Carson Press LLC (`PV65ZWXCWX`)**, recorded in `config/apple-signing.json`. `npm run check:signing` inspects public certificate and provisioning metadata for that team without exporting keys. Its development certificate signs the local app; a Developer ID Application certificate and an approved macOS browser-passkey profile for Kumo are not currently installed. Development signing does not grant that managed capability. See [production signing and notarization](docs/signing.md) for the separate release workflow.
+The selected Apple team is **Carson Press LLC (`PV65ZWXCWX`)**, recorded in `config/apple-signing.json`. `npm run check:signing` inspects public certificate and provisioning metadata for that team without exporting keys. Its development certificate signs the local app. A valid Developer ID Application identity is now installed for production signing; an approved macOS browser-passkey profile for Kumo is still absent. Neither certificate alone grants that managed capability. See [production signing and notarization](docs/signing.md) for the separate release workflow.
 
 The executable app is `dist/Kumo.app`. Kumo creates its own persistent profile at `~/Library/Application Support/Kumo`; it never imports Chrome's profile or credentials. Website cookies and storage can persist across restarts, including Google website sessions, subject to each website's expiry, MFA, and account policies. Browser Google account sign-in and Chrome Sync are disabled.
 
@@ -54,7 +54,7 @@ The malware-enabled source build uses `build/source-155.0.8059.84-malware-001`. 
 | Apple Passwords without its extension | The source app adds a native AppKit context-menu sheet with macOS AutoFill → Passwords. The person chooses a credential and clicks Fill. All four source-browser checks passed: exact synthetic Unicode filled the original HTTPS field despite decoy focus; Cancel, navigation and real tab hiding left the website fields empty. Real Apple credential selection and automatic site matching remain unverified. The upstream-binary preview lacks this native source change. |
 | Native Apple passkeys | Chromium WebAuthn remains. The public capability/consent helper is included in source. A production Kumo identity needs Apple's managed browser entitlement and appropriate provisioning; the local development signature does not grant that capability. |
 | Codex / Claude Desktop control | Portable Desktop setup, local stdio MCP tools and Native Messaging bridge, opt-in origin-bound tab grants, session revocation, password-field exclusion. Official clients keep their own personal/work account sign-in. No provider token extraction or separate provider API billing is used. |
-| Local phishing warnings | Experimental PhishLang MobileBERT port with native Swift/Core ML CPU inference, a sandboxed helper without network entitlement, bounded privacy-filtered page inputs and a browser-owned warning page. Enable in Privacy & security. Starts off; synthetic integration does not establish production accuracy or an 8 GB hardware qualification. |
+| Local phishing warnings | The experimental PhishLang MobileBERT model and native inference helper are omitted from the first public binary. Optional development builds retain native Swift/Core ML CPU inference, bounded privacy-filtered page inputs and a browser-owned warning page. Synthetic integration does not establish production accuracy or an 8 GB hardware qualification. |
 | Known-malware domains | Local HaGeZi TIF Mini rules block listed domains and subdomains for matching page/resource requests. Enabled by default, with list age, controls and periodic HTTPS feed refresh. No browsing URL lookup or file upload. This layer does not scan downloaded files; see [scope and updates](docs/malware-protection.md). |
 | Download antivirus | The source engine holds ordinary downloads for a sandboxed native ClamAV scan before completion or automatic opening. Setup uses the official Cisco installation and verified local definitions, with scheduled updates. Missing, stale, infected, encrypted, limited or failed scans block completion. Saved pages/MHTML use a separate path; see [setup and limits](docs/download-antivirus.md). |
 | App updates | Signed appcasts and archives on `morrigangirl/kumo` GitHub Releases, checked by a separate native Sparkle companion. Installation requires user approval and closed browser profiles. A separate increasing Kumo build counter prevents version rollback. The current development build keeps network checks disabled; the first notarized production release remains unpublished. |
@@ -80,7 +80,7 @@ See [agent protocol, account setup and access boundaries](docs/agents.md).
 
 ## Verification
 
-The latest [GitHub Releases updater validation](docs/security-audits/2026-10-19/github-release-updates.md) records the current package, signed-feed tests, real Chromium installation-lock checks and remaining production prerequisites.
+The latest [GitHub Releases updater validation](docs/security-audits/2026-10-19/github-release-updates.md) records the earlier model-inclusive development package, signed-feed tests, real Chromium installation-lock checks and production prerequisites at that validation snapshot.
 
 ```sh
 npm test
@@ -97,7 +97,7 @@ npm install --prefix .cache/qa --no-save --package-lock=false --ignore-scripts p
 node scripts/smoke-profile-upgrade.mjs verify
 node scripts/smoke-browser.mjs
 node scripts/smoke-agents.mjs
-# Local PhishLang warning flows and native CPU inference, using synthetic pages.
+# Optional model-inclusive development builds only: synthetic PhishLang warnings.
 node scripts/smoke-phishing.mjs
 # Local domain blocking and actual native antivirus completion/cancellation.
 node scripts/smoke-malware.mjs

@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-19T22:36:54.905034+00:00",
+  "status": "pass-development-signed-model-free-candidate",
+  "app": "dist/release-candidate-0.1.0-202610190001/Kumo.app",
+  "version": "0.1.0",
+  "build": "202610190001",
+  "engineVersion": "155.0.8059.84",
+  "phishingProtection": {
+    "included": false,
+    "experimental": true,
+    "enabledByDefault": false,
+    "reason": "omitted-from-release"
+  },
+  "malwareProtection": {
+    "included": true,
+    "enabledByDefault": true,
+    "type": "local-malware-domain-blocking",
+    "provider": "HaGeZi TIF Mini",
+    "version": "2026.1019.0844.28",
+    "domainCount": 210826,
+    "sourceCommit": "0546edc4c45d50ceadea1bdc5fc3158634c66c90",
+    "sourceSHA256": "60a537cddcd7e60fad68562b410a10ee29add54f6fcfefec67ff0024bf133f23",
+    "modifiedAt": "2026-10-19T08:44:00Z",
+    "license": "GPL-3.0",
+    "downloadAntivirusIncluded": true,
+    "downloadScanner": "ClamAV (separate official installation required)"
+  },
+  "sourceInputDigest": "92acde368a82bc38610f1e310f97a769658d901aa53f0988db3a0b38b568814c",
+  "tests": {
+    "javascript": 153,
+    "package": 72,
+    "release": 27,
+    "compiledLauncher": 25,
+    "browserModelFree": true,
+    "browserDomainRules": 211
+  },
+  "readiness": {
+    "developerIDInstalled": true,
+    "notarizationCredentialsAuthenticated": true,
+    "notarizationCompleted": false,
+    "updatesEnabled": false,
+    "published": false,
+    "approvedBrowserPasskeyProfileInstalled": false
+  },
+  "sourceSHA256": {
+    "scripts/package.py": "4edcbd292d8c2b280e1867cbe48890ebecc0e0257a20f5d844250629955f2460",
+    "scripts/test_model_free_package.py": "75cbccde3003891c1a220bd4519fa6cd2ff1ced6522e5a2bb6821479de5f79ca",
+    "scripts/smoke-model-free.mjs": "c6e29cf9da01a796439fa54339fc3de1e5e8c6cb06dd2180f1056b1ac9e45166",
+    "extension/phishing-background.js": "91e48976b0e1ef7064ba036256447aeacbf33c2292e97ff6d462f421447209a0",
+    "extension/phishing-status.js": "f1bc9b67ba3732ba400df6ad4979145737188ef2ba8426eb7c45cd7e14f1d9b8",
+    "extension/newtab.html": "6456f3e021777582e22e61f40b373abf22a1551df0164811967f1a36132a66b5",
+    "extension/newtab.js": "5e7e5b7fd67337f6211df5e5189dec11aabbbfe8269d1829ce6c437adfc5b05e",
+    "native/launcher/main.swift": "3bd454d05f5e92fc9bf12c836e0f58791164a809a7dde6f7cfb9a83c9a1a3d8a",
+    "scripts/test_launcher_phishing.py": "a456425f5f36ffbf826f8e9ce093be9184cb3bb78f86f5c97883db752719fa83",
+    ".github/workflows/release.yml": "8aa4db2cdd1a02f74932132c8267edfa29602bdfc3c2d7ce6e9c7daf9f4d0824"
+  },
+  "evidence": [
+    {
+      "path": ".cache/qa/production-release-2026-10-19/package.log",
+      "sha256": "90b1c1d6151227743005649a58b68f47484fd8ba9dec18a11e7318bb41cc29d6",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/model-free-smoke.log",
+      "sha256": "3cd02ece7d90fd6b5f587693cbe38255565de576fb50bc0f6d6b6117aacc3453",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/model-free-smoke.attempt001.log",
+      "sha256": "fc252105cc1e1e8484df23a297068b0d47a7884cfbb80bde887fa51db6f20cf2",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/domain-smoke.log",
+      "sha256": "1edc7bad6f8be187b037f004d302d7b2763bdf7e8fa88fdac796df302898d2a3",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/release-tests.log",
+      "sha256": "36c805f5e77ce11e475aaba17fa41fa5213d854a56165a1ed604af910ac82eb7",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/candidate-doctor.json",
+      "sha256": "b4c0b7e6eef0e48dc075c5f996b4390ab3d915cb606cb1ae8da1ff00c6bdff98",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/signing-check.json",
+      "sha256": "b75acf4df1b5ea727e258c61182f1092152d23f9a5c8353c6a126f989212a0f2",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/production-release-2026-10-19/notary-profile-check.json",
+      "sha256": "15a8c3a2cbcd63f5e5408e7929db5e3b90d31b6962ad4eba2bbb931dc91d39d5",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/model-free-runtime-2026-10-19/summary.json",
+      "sha256": "02f12da4607fe14f27b1bbf4d811a1daba54c9c97e80873182795bcb3f466323",
+      "generatedArtifactExcludedFromGit": true
+    },
+    {
+      "path": ".cache/qa/model-free-runtime-2026-10-19/javascript-tests.log",
+      "sha256": "517b62c35559fe9098583d4b31adc59f79d2f0217d0129d1daf34dcdba5682c8",
+      "generatedArtifactExcludedFromGit": true
+    }
+  ],
+  "candidateCodeDirectoryHash": "364f0b3439c47cb430547f11b80d55def0460c9d",
+  "candidateResourceSealSHA256": "57187f5769710abb805b99974ead7f335a48aa85367fb2550d0d5f516ca93213"
+}

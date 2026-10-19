@@ -78,7 +78,6 @@ jobs:
           python3 scripts/source.py doctor
           python3 scripts/prepare-sparkle.py
           python3 scripts/prepare-malware-feed.py
-          /usr/bin/python3 scripts/prepare-phishlang.py
 
       - name: Run release regressions
         run: |
@@ -89,7 +88,10 @@ jobs:
 
       - name: Build the pinned Chromium source and package Kumo
         run: |
-          scripts/build-source.sh package --work-dir "$KUMO_RELEASE_SOURCE_DIR"
+          scripts/build-source.sh build --work-dir "$KUMO_RELEASE_SOURCE_DIR"
+          python3 scripts/package.py \
+            --engine-app "$KUMO_RELEASE_SOURCE_DIR/recipe/build/src/out/Default/Chromium.app" \
+            --without-phishlang
 
       - name: Sign, notarize, staple and prepare signed update assets
         run: |

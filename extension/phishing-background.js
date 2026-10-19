@@ -17,8 +17,13 @@ function website(value) {
   } catch { return null; }
 }
 
-export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now, randomId = () => crypto.randomUUID()} = {}) {
-  let enabled = false, epoch = 0, port = null, modelVersion = null, health = 'off';
+export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now, randomId = () => crypto.randomUUID(),
+  readBuildInfo = async () => {
+    const response = await fetch(api.runtime.getURL('build-info.json'));
+    if (!response.ok) throw new Error('Packaged feature information is unavailable.');
+    return response.json();
+  }} = {}) {
+  let included = false, enabled = false, epoch = 0, port = null, modelVersion = null, health = 'off';
   let mutations = Promise.resolve();
   let warningMutations = Promise.resolve();
   const pending = new Map(), activeTabs = new Set(), generations = new Map(), results = new Map(), bypasses = new Map(), scanBudgets = new Map();
@@ -108,6 +113,20 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
   }
   async function initialize() {
     const started = epoch;
+    let feature;
+    try { feature = (await readBuildInfo())?.phishingProtection; } catch {}
+    if (started !== epoch) return;
+    included = feature?.included === true;
+    if (!included) {
+      // Retire scripts and preferences from a model-inclusive installation. An
+      // omitted checkpoint must never trigger missing-host retries or page scans.
+      health = feature?.included === false ? 'not-included' : 'unavailable';
+      await api.storage.local.set({[KEY]: {enabled: false}});
+      await unregister();
+      await stopOpenTabs();
+      await api.storage.session.set({[WARNINGS]: {}});
+      return;
+    }
     const stored = (await api.storage.local.get(KEY))[KEY];
     if (started !== epoch) return;
     if (stored?.enabled !== true) { await unregister(); return; }
@@ -127,8 +146,9 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
   mutations = ready;
 
   function setEnabled(value) {
+    if (value && !included) return Promise.reject(new Error('The experimental phishing model is not included in this build.'));
     const expected = ++epoch;
-    enabled = false; health = 'off'; disconnect(); clearSession();
+    enabled = false; health = included ? 'off' : health; disconnect(); clearSession();
     const mutation = mutations.then(async () => {
       checkEpoch(expected);
       await api.storage.local.set({[KEY]: {enabled: false}});
@@ -250,7 +270,7 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
     if (!internal(sender)) throw new Error('Open Kumo settings to change phishing protection.');
     if (message.type === 'phishing.enable') return setEnabled(true);
     if (message.type === 'phishing.disable') return setEnabled(false);
-    if (message.type === 'phishing.status') return {ok: true, enabled, health, modelVersion, currentTab: results.get(message.tabId) || null};
+    if (message.type === 'phishing.status') return {ok: true, included, enabled, health, modelVersion, currentTab: results.get(message.tabId) || null};
     throw new Error('Unsupported phishing request.');
   }
   api.tabs.onUpdated.addListener((tabId, change) => {

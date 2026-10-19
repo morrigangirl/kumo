@@ -38,12 +38,20 @@ JSON report includes the exact team, identity candidates, ordered code items,
 entitlement keys, signing flags, and blockers. Dry run also shows the commands
 with temporary-path placeholders. It never creates a release staging copy.
 
-At implementation time, this Mac had an Apple Development identity for the
-selected team, but **no valid Developer ID Application identity** for it and
-**no approved Kumo browser-passkey profile**. The current packaged app was the
-upstream preview. These are release prerequisites, not tasks the script silently
-performs. The Apple Developer portal, certificates, and profiles are never
-changed by these tools.
+The build Mac now has a valid **Developer ID Application** identity for Carson
+Press LLC (`PV65ZWXCWX`), as confirmed by `scripts/check-signing.py`. The
+current source app remains development-signed until the separate production
+step runs. No approved Kumo browser-passkey profile is installed. A
+`notarytool` Keychain profile is configured and authenticated; successful app
+notarization and stapling still need the production step. The optional managed
+passkey capability is not required to publish the ordinary browser release.
+The Apple Developer portal, certificates, and profiles are never changed by
+these tools.
+
+The first public binary excludes the experimental PhishLang checkpoint and
+helper while retaining domain blocking and ClamAV scanning. Package with
+`--without-phishlang` as described in [GitHub Releases](github-releases.md).
+The signer refuses an included model marked `localDevelopmentOnly: true`.
 
 ## Sign a separate completed source build
 
@@ -192,11 +200,11 @@ credentials or print the full service response.
 
 The script's syntax, CLI help, metadata-only doctor/dry-run, profile rejection
 rules, entitlement cleanup, code ordering, and atomic no-overwrite publication
-can be tested without a signing identity. The production certificate/signing,
-managed-profile authorization, notarization, stapling, Gatekeeper launch, and
-live passkey success paths remain unexecuted until the missing prerequisites
-exist. Successful static signature verification does not replace launching the
-release and checking navigation, helpers/JIT, extensions, native Passwords, and
+can be tested without a signing identity. Certificate availability has been
+verified. Production signing, notarization, stapling, Gatekeeper launch,
+managed-profile authorization and live passkey success remain separate runtime
+checks; certificate installation alone does not establish their success.
+Successful static signature verification does not replace launching the release and checking navigation, helpers/JIT, extensions, native Passwords, and
 approved passkeys on the target macOS version.
 
 References:

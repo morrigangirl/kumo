@@ -1,5 +1,6 @@
 import {DEFAULTS, THEMES, searchURL, validateSettings, validateEngine, webURL, chromeTheme} from './shared.js';
 import {engineSecurityStatus} from './security.js';
+import {phishingControlState} from './phishing-status.js';
 const $ = id => document.getElementById(id);
 let settings = validateSettings((await chrome.storage.local.get('preferences')).preferences || DEFAULTS);
 let buildInfo = {};
@@ -138,12 +139,15 @@ for (const [id, action] of [['malware-enable', 'enable'], ['malware-disable', 'd
   };
 }
 async function refreshPhishingStatus() {
-  const status = await chrome.runtime.sendMessage({type: 'phishing.status'});
+  let status;
+  try { status = await chrome.runtime.sendMessage({type: 'phishing.status'}); } catch {}
   const description = document.getElementById('phishingStatus');
   if (!description) return;
-  description.textContent = status.enabled ? status.health === 'ready' ? 'Enabled. Page analysis stays on this Mac.' : 'Enabled, but the local model is unavailable. Pages may go unchecked. Relaunch Kumo or turn protection off and on.' : 'Off. Enable local page analysis to receive phishing warnings.';
-  document.getElementById('enablePhishing').disabled = status.enabled;
-  document.getElementById('disablePhishing').disabled = !status.enabled;
+  const state = phishingControlState(buildInfo, status);
+  description.textContent = state.description;
+  document.getElementById('enablePhishing').disabled = state.enableDisabled;
+  document.getElementById('disablePhishing').disabled = state.disableDisabled;
+  for (const details of document.querySelectorAll('[data-phishing-details]')) details.hidden = !state.included;
 }
 function showSettings(name = 'appearance') { panel(name); if (!$('settingsDialog').open) $('settingsDialog').showModal(); }
 function nativePage(url) { return chrome.tabs.create({url}); }
@@ -168,6 +172,7 @@ $('nativeSearch').onclick = () => nativePage('chrome://settings/searchEngines');
 if (document.getElementById('enablePhishing')) {
   document.getElementById('enablePhishing').onclick = async () => {
     try {
+      if (buildInfo.phishingProtection?.included !== true) throw new Error('The experimental phishing model is not included in this build.');
       // Request from the actual gesture, before an await. These website permissions
       // enable analysis; they do not create any agent tab grants.
       const permission = chrome.permissions.request({origins: ['http://*/*', 'https://*/*']});

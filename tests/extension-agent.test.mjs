@@ -13,6 +13,7 @@ function deferred() { let resolve; const promise = new Promise(done => { resolve
 
 async function worker(t, {initializationGate} = {}) {
   const original = globalThis.chrome;
+  const originalFetch = globalThis.fetch;
   const data = {};
   const tabs = new Map([
     [1, { id: 1, title: 'Example', url: 'https://example.com/', incognito: false }],
@@ -73,7 +74,11 @@ async function worker(t, {initializationGate} = {}) {
     },
   };
   globalThis.chrome = chrome;
-  t.after(() => { globalThis.chrome = original; });
+  globalThis.fetch = async url => {
+    assert.equal(url, chrome.runtime.getURL('build-info.json'));
+    return {ok: true, json: async () => ({phishingProtection: {included: true}})};
+  };
+  t.after(() => { globalThis.chrome = original; globalThis.fetch = originalFetch; });
   await import(new URL(`../extension/background.js?agent-test=${++loadId}`, import.meta.url));
   harness.chrome = chrome;
   harness.message = (message, sender = { id: chrome.runtime.id, url: chrome.runtime.getURL('newtab.html') }) => new Promise(resolve => {

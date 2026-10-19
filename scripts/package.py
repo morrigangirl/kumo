@@ -263,7 +263,17 @@ def verify_malware_start(destination):
             reply["available"] and not reply["installed"]):
         raise RuntimeError("Download scanner emitted an invalid status reply.")
 
-def assemble(engine, destination, local_source, installed_destination):
+def ensure_no_phishing_assets(destination):
+    """Do not inherit an experimental model from an already-modified engine."""
+    names = {"KumoPhishing.app", "KumoPhishingHost", "PhishLang", "PhishLang.mlmodelc",
+             "phishing-host-template.json", "model.safetensors"}
+    for path in destination.rglob("*"):
+        if path.name in names:
+            raise RuntimeError("Model-free packaging refuses inherited PhishLang assets: "
+                               + path.relative_to(destination).as_posix())
+
+
+def assemble(engine, destination, local_source, installed_destination, include_phishing=True):
     receipt_api = None
     source_receipt = None
     if local_source:
@@ -271,11 +281,12 @@ def assemble(engine, destination, local_source, installed_destination):
         source_receipt = receipt_api["verify_receipt"](
             engine, ROOT, receipt_api["current_input_digest"](ROOT))
     identity, signing_team = development_identity()
-    phishing_info = verified_phishing_resources()
+    phishing_info = verified_phishing_resources() if include_phishing else None
     malware_info = verified_malware_resources()
     release = release_configuration()
     run(sys.executable, ROOT / "scripts/prepare-sparkle.py", "--verify")
-    run("bash", ROOT / "scripts/build-phishing.sh")
+    if include_phishing:
+        run("bash", ROOT / "scripts/build-phishing.sh")
     run("bash", ROOT / "scripts/build-malware.sh")
     run("bash", ROOT / "scripts/build-updater.sh")
     # DMG Finder metadata can make strict codesign verification fail. Copy only
@@ -284,6 +295,8 @@ def assemble(engine, destination, local_source, installed_destination):
     run("codesign", "--verify", "--deep", "--strict", destination)
     if source_receipt is not None:
         receipt_api["verify_artifact_hashes"](destination, source_receipt)
+    if not include_phishing:
+        ensure_no_phishing_assets(destination)
     remove_stale_tickets(destination)
     engine_policy = signature_policy(destination)
     resources = destination / "Contents/Resources"
@@ -305,29 +318,30 @@ def assemble(engine, destination, local_source, installed_destination):
     update_lock = resources / "kumo-update-lock"
     update_lock.write_bytes(b"Kumo update coordination v1\n")
     update_lock.chmod(0o644)
-    phishing_bundle = destination / "Contents/Helpers/KumoPhishing.app"
-    phishing_contents = phishing_bundle / "Contents"
-    phishing_resources = phishing_contents / "Resources/PhishLang"
-    phishing_resources.mkdir(parents=True)
-    (phishing_contents / "MacOS").mkdir()
-    (phishing_contents / "Info.plist").write_bytes(plistlib.dumps({
-        "CFBundleIdentifier": "app.kumo.phishing", "CFBundleExecutable": "KumoPhishingHost",
-        "CFBundleName": "KumoPhishing", "CFBundlePackageType": "APPL",
-        "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0",
-        "LSMinimumSystemVersion": "13.0", "LSBackgroundOnly": True,
-    }))
-    prepared = ROOT / "build/phishlang-model"
-    shutil.copytree(prepared / "PhishLang.mlmodelc", phishing_resources / "PhishLang.mlmodelc")
-    for name in ("vocab.txt", "model-info.json"):
-        shutil.copyfile(prepared / name, phishing_resources / name)
-    for name in ("NOTICE.md", "LICENSE-MobileBERT.txt"):
-        shutil.copyfile(ROOT / "native/phishing" / name, phishing_resources / name)
-    phishing_host = phishing_contents / "MacOS/KumoPhishingHost"
-    shutil.copy2(ROOT / "build/phishing-native/KumoPhishingHost", phishing_host)
-    (resources / "phishing-host-template.json").write_text(json.dumps({
-        "name": "com.kumo.phishing", "description": "Kumo local PhishLang classifier",
-        "type": "stdio", "allowed_origins": [f"chrome-extension://{extension_id()}/"],
-    }, indent=2) + "\n")
+    if include_phishing:
+        phishing_bundle = destination / "Contents/Helpers/KumoPhishing.app"
+        phishing_contents = phishing_bundle / "Contents"
+        phishing_resources = phishing_contents / "Resources/PhishLang"
+        phishing_resources.mkdir(parents=True)
+        (phishing_contents / "MacOS").mkdir()
+        (phishing_contents / "Info.plist").write_bytes(plistlib.dumps({
+            "CFBundleIdentifier": "app.kumo.phishing", "CFBundleExecutable": "KumoPhishingHost",
+            "CFBundleName": "KumoPhishing", "CFBundlePackageType": "APPL",
+            "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0",
+            "LSMinimumSystemVersion": "13.0", "LSBackgroundOnly": True,
+        }))
+        prepared = ROOT / "build/phishlang-model"
+        shutil.copytree(prepared / "PhishLang.mlmodelc", phishing_resources / "PhishLang.mlmodelc")
+        for name in ("vocab.txt", "model-info.json"):
+            shutil.copyfile(prepared / name, phishing_resources / name)
+        for name in ("NOTICE.md", "LICENSE-MobileBERT.txt"):
+            shutil.copyfile(ROOT / "native/phishing" / name, phishing_resources / name)
+        phishing_host = phishing_contents / "MacOS/KumoPhishingHost"
+        shutil.copy2(ROOT / "build/phishing-native/KumoPhishingHost", phishing_host)
+        (resources / "phishing-host-template.json").write_text(json.dumps({
+            "name": "com.kumo.phishing", "description": "Kumo local PhishLang classifier",
+            "type": "stdio", "allowed_origins": [f"chrome-extension://{extension_id()}/"],
+        }, indent=2) + "\n")
     malware_contents = destination / "Contents/Helpers/KumoMalware.app/Contents"
     (malware_contents / "MacOS").mkdir(parents=True)
     (malware_contents / "Resources").mkdir()
@@ -401,14 +415,20 @@ def assemble(engine, destination, local_source, installed_destination):
         "checkCommand": "open -n -b app.kumo.browser --args --kumo-check-for-updates",
         "productionSigningRequired": True,
     }
-    build_info["phishingProtection"] = {
-        "included": True, "modelVersion": phishing_info["modelVersion"],
-        "modelDirectorySHA256": phishing_info["modelDirectorySHA256"],
-        "vocabSHA256": phishing_info["vocabSHA256"], "computeUnits": "cpuOnly",
-        "experimental": True, "enabledByDefault": False,
-        "localDevelopmentOnly": phishing_info.get("localDevelopmentOnly") is True,
-        "rightsStatus": phishing_info.get("rightsStatus", "unverified"),
-    }
+    if include_phishing:
+        build_info["phishingProtection"] = {
+            "included": True, "modelVersion": phishing_info["modelVersion"],
+            "modelDirectorySHA256": phishing_info["modelDirectorySHA256"],
+            "vocabSHA256": phishing_info["vocabSHA256"], "computeUnits": "cpuOnly",
+            "experimental": True, "enabledByDefault": False,
+            "localDevelopmentOnly": phishing_info.get("localDevelopmentOnly") is True,
+            "rightsStatus": phishing_info.get("rightsStatus", "unverified"),
+        }
+    else:
+        build_info["phishingProtection"] = {
+            "included": False, "experimental": True, "enabledByDefault": False,
+            "reason": "omitted-from-release",
+        }
     build_info["malwareProtection"] = {
         "included": True, "enabledByDefault": True,
         "type": "local-malware-domain-blocking", "provider": "HaGeZi TIF Mini",
@@ -432,14 +452,15 @@ def assemble(engine, destination, local_source, installed_destination):
         run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.browser.updater",
             "--options", hex(engine_policy), updater_bundle)
         signature_policy(updater_bundle, expected_team=signing_team)
-        # The classifier has no browser/agent privileges or network entitlement.
-        # It reads only its bundled model and bounded Native Messaging frames.
-        with tempfile.NamedTemporaryFile(suffix=".plist") as phishing_entitlements:
-            phishing_entitlements.write(plistlib.dumps({"com.apple.security.app-sandbox": True}))
-            phishing_entitlements.flush()
-            run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.phishing",
-                "--options", hex(engine_policy), "--entitlements", phishing_entitlements.name, phishing_bundle)
-            signature_policy(phishing_bundle, expected_team=signing_team)
+        if include_phishing:
+            # The classifier has no browser/agent privileges or network entitlement.
+            # It reads only its bundled model and bounded Native Messaging frames.
+            with tempfile.NamedTemporaryFile(suffix=".plist") as phishing_entitlements:
+                phishing_entitlements.write(plistlib.dumps({"com.apple.security.app-sandbox": True}))
+                phishing_entitlements.flush()
+                run("codesign", "--force", "--sign", identity, "--timestamp=none", "--identifier", "app.kumo.phishing",
+                    "--options", hex(engine_policy), "--entitlements", phishing_entitlements.name, phishing_bundle)
+                signature_policy(phishing_bundle, expected_team=signing_team)
         with tempfile.NamedTemporaryFile(suffix=".plist") as malware_entitlements:
             malware_entitlements.write(plistlib.dumps({
                 "com.apple.security.app-sandbox": True,
@@ -462,7 +483,10 @@ def assemble(engine, destination, local_source, installed_destination):
                 raise RuntimeError("Packaging changed the engine's macOS signing protections.")
     run("codesign", "--verify", "--deep", "--strict", "-R", f'=anchor apple generic and certificate leaf[subject.OU] = "{signing_team}"', destination)
     verify_engine_start(destination)
-    verify_phishing_start(destination)
+    if include_phishing:
+        verify_phishing_start(destination)
+    else:
+        ensure_no_phishing_assets(destination)
     verify_malware_start(destination)
     status = subprocess.run([str(updater_contents / "MacOS/KumoUpdater"), "--status"],
                             capture_output=True, timeout=30, check=True)
@@ -540,7 +564,7 @@ def ensure_no_engine_downgrade(destination, incoming_version):
         raise RuntimeError(f"Refusing Chromium engine downgrade from {installed_version} to {incoming_version}. "
                            "Build the current source engine, or choose a separate --output path for preview QA.")
 
-def package(engine, destination, local_source):
+def package(engine, destination, local_source, include_phishing=True):
     # Build and verify beside the existing app. A compiler/signing failure must
     # leave the last working browser available.
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -548,7 +572,8 @@ def package(engine, destination, local_source):
     ensure_no_engine_downgrade(destination, incoming_engine_version(engine, local_source))
     with tempfile.TemporaryDirectory(prefix=".kumo-package-", dir=destination.parent) as temporary:
         staged = Path(temporary) / destination.name
-        build_info = assemble(engine, staged, local_source, destination)
+        options = {} if include_phishing else {"include_phishing": False}
+        build_info = assemble(engine, staged, local_source, destination, **options)
         ensure_app_closed(destination)
         ensure_no_engine_downgrade(destination, build_info["engineVersion"])
         publish_preview(staged, destination)
@@ -559,11 +584,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine-app", type=Path, help="Package your locally compiled Chromium.app")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/Kumo.app")
+    parser.add_argument("--without-phishlang", action="store_true",
+                        help="Omit the experimental local PhishLang model and its native helper")
     args = parser.parse_args()
     if sys.platform != "darwin" or os.uname().machine != "arm64":
         parser.error("This packaging target requires an Apple Silicon Mac.")
     if args.engine_app:
-        package(args.engine_app.resolve(), args.output.resolve(), True)
+        package(args.engine_app.resolve(), args.output.resolve(), True, include_phishing=not args.without_phishlang)
         return
     cache = ROOT / ".cache"
     cache.mkdir(exist_ok=True)
@@ -579,7 +606,7 @@ def main():
         run("hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", mount, dmg)
         try:
             engine = Path(mount) / "Chromium.app"
-            package(engine, args.output.resolve(), False)
+            package(engine, args.output.resolve(), False, include_phishing=not args.without_phishlang)
         finally:
             run("hdiutil", "detach", mount)
 

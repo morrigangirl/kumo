@@ -211,6 +211,33 @@ func launchUpdater(contents: URL, manual: Bool) throws {
     guard task.terminationStatus == 0 else { throw extensionFailure("macOS could not open Kumo's updater.") }
 }
 
+// Model-free releases retire the profile registration left by an earlier
+// development build. Unlink only the manifest itself, never a symlink target or
+// a directory tree inside the user's profile.
+func preparePhishingNativeHost(contents: URL, profileHosts: URL) throws {
+    let fm = FileManager.default, resources = contents.appendingPathComponent("Resources")
+    let manifest = profileHosts.appendingPathComponent("com.kumo.phishing.json")
+    let metadata = resources.appendingPathComponent("KumoExtension/build-info.json")
+    let info = (try? JSONSerialization.jsonObject(with: Data(contentsOf: metadata))) as? [String: Any]
+    let feature = info?["phishingProtection"] as? [String: Any]
+    let template = resources.appendingPathComponent("phishing-host-template.json")
+    let executable = contents.appendingPathComponent("Helpers/KumoPhishing.app/Contents/MacOS/KumoPhishingHost")
+    if let included = feature?["included"] as? NSNumber,
+       CFGetTypeID(included) == CFBooleanGetTypeID(), included.boolValue,
+       fm.isExecutableFile(atPath: executable.path),
+       let bytes = try? Data(contentsOf: template),
+       var host = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] {
+        host["path"] = executable.path
+        try JSONSerialization.data(withJSONObject: host, options: [.prettyPrinted]).write(to: manifest, options: .atomic)
+        return
+    }
+    var state = stat()
+    if lstat(manifest.path, &state) == 0 {
+        guard state.st_uid == getuid(), state.st_mode & S_IFMT == S_IFREG || state.st_mode & S_IFMT == S_IFLNK,
+              unlink(manifest.path) == 0 else { throw extensionFailure("Kumo's retired phishing host registration cannot be removed safely.") }
+    } else if errno != ENOENT { throw extensionFailure("Kumo's phishing host registration is unavailable.") }
+}
+
 // Fixed setup actions run relative to this app. They never become Chromium flags.
 func runSetup(_ arguments: [String], contents: URL) throws -> Bool {
     let actions: [String: (String, [String], String)] = [
@@ -317,12 +344,7 @@ func run() throws {
         host["path"] = resources.appendingPathComponent("kumo-native-host").path
         try JSONSerialization.data(withJSONObject: host, options: [.prettyPrinted]).write(to: profileHosts.appendingPathComponent("com.kumo.agent_bridge.json"), options: .atomic)
     }
-    let phishingTemplate = resources.appendingPathComponent("phishing-host-template.json")
-    if fm.fileExists(atPath: phishingTemplate.path),
-       var host = try JSONSerialization.jsonObject(with: Data(contentsOf: phishingTemplate)) as? [String: Any] {
-        host["path"] = contents.appendingPathComponent("Helpers/KumoPhishing.app/Contents/MacOS/KumoPhishingHost").path
-        try JSONSerialization.data(withJSONObject: host, options: [.prettyPrinted]).write(to: profileHosts.appendingPathComponent("com.kumo.phishing.json"), options: .atomic)
-    }
+    try preparePhishingNativeHost(contents: contents, profileHosts: profileHosts)
     let malwareTemplate = resources.appendingPathComponent("malware-host-template.json")
     if fm.fileExists(atPath: malwareTemplate.path),
        var host = try JSONSerialization.jsonObject(with: Data(contentsOf: malwareTemplate)) as? [String: Any] {

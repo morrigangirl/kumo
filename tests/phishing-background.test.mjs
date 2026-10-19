@@ -9,9 +9,13 @@ class Event {
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; }
-async function harness(t, {stored = false, permission = true, probability = 0.99} = {}) {
+async function harness(t, {stored = false, permission = true, probability = 0.99,
+  buildInfo = {phishingProtection: {included: true}}, registered = false, openTabs = [], storedWarnings = {}} = {}) {
   const id = 'eldkgppmnhligdekahicdcdndcoongio', base = `chrome-extension://${id}/`;
   const local = {phishingProtection: {enabled: stored}}, session = {}, scripts = new Map(), tabs = new Map();
+  if (registered) scripts.set('kumo-local-phishing', {id: 'kumo-local-phishing'});
+  if (Object.keys(storedWarnings).length) session.phishingWarnings = structuredClone(storedWarnings);
+  for (const tab of openTabs) tabs.set(tab.id, structuredClone(tab));
   const h = {local, session, scripts, tabs, sent: [], updates: [], confirmations: [], stopped: [], ports: [], permission, probability,
     nativeGate: null, storeGate: null, beforeStore: null, beforeGet: null, beforeFrame: null, revision: 0, clock: 100000, counter: 0};
   const api = {
@@ -39,7 +43,7 @@ async function harness(t, {stored = false, permission = true, probability = 0.99
     },
     scripting: {async getRegisteredContentScripts() { return [...scripts.values()]; }, async unregisterContentScripts() { scripts.clear(); },
       async registerContentScripts(values) { values.forEach(value => scripts.set(value.id, value)); }, async executeScript() { return []; }},
-    tabs: {onUpdated: new Event(), onRemoved: new Event(), async query() { return []; }, async get(tabId) {
+    tabs: {onUpdated: new Event(), onRemoved: new Event(), async query() { return structuredClone([...tabs.values()]); }, async get(tabId) {
       if (h.beforeGet) await h.beforeGet(tabId);
       if (!tabs.has(tabId)) throw new Error('Tab missing'); return structuredClone(tabs.get(tabId));
     }, async update(tabId, values) { h.updates.push({tabId, ...values}); Object.assign(tabs.get(tabId), values); return structuredClone(tabs.get(tabId)); },
@@ -50,7 +54,8 @@ async function harness(t, {stored = false, permission = true, probability = 0.99
     webNavigation: {async getFrame({tabId}) { if (h.beforeFrame) await h.beforeFrame(tabId); const tab = tabs.get(tabId); return {documentId: tab.documentId, url: tab.url}; }},
   };
   h.api = api;
-  h.protection = createPhishingProtection(api, {now: () => h.clock, randomId: () => `qa-${++h.counter}`});
+  h.protection = createPhishingProtection(api, {now: () => h.clock, randomId: () => `qa-${++h.counter}`,
+    readBuildInfo: async () => { if (buildInfo instanceof Error) throw buildInfo; return buildInfo; }});
   t.after(() => h.protection.shutdown());
   await h.protection.ready;
   h.internal = {id, url: base + 'newtab.html#settings', tab: {id: 99}, frameId: 0, documentLifecycle: 'active'};
@@ -68,8 +73,44 @@ async function harness(t, {stored = false, permission = true, probability = 0.99
 
 test('phishing starts off without starting a native model or registering page access', async t => {
   const h = await harness(t);
-  assert.deepEqual(await h.message({type: 'phishing.status'}), {ok: true, enabled: false, health: 'off', modelVersion: null, currentTab: null});
+  assert.deepEqual(await h.message({type: 'phishing.status'}), {ok: true, included: true, enabled: false, health: 'off', modelVersion: null, currentTab: null});
   assert.equal(h.sent.length, 0); assert.equal(h.scripts.size, 0);
+});
+
+test('model-free upgrades retire persisted analysis, warning tickets and scripts without a native request', async t => {
+  const h = await harness(t, {stored: true, registered: true,
+    buildInfo: {phishingProtection: {included: false, reason: 'omitted-from-release'}},
+    storedWarnings: {old: {url: 'https://example.com/', tabId: 1}},
+    openTabs: [{id: 1, url: 'https://example.com/', incognito: false}, {id: 2, url: 'https://private.example/', incognito: true}],
+  });
+  assert.deepEqual(await h.message({type: 'phishing.status'}), {ok: true, included: false, enabled: false,
+    health: 'not-included', modelVersion: null, currentTab: null});
+  assert.equal(h.local.phishingProtection.enabled, false);
+  assert.equal(h.scripts.size, 0); assert.deepEqual(h.stopped, [1]);
+  assert.deepEqual(h.session.phishingWarnings, {});
+  for (let attempt = 0; attempt < 3; attempt++) await assert.rejects(h.enable(), /not included/);
+  assert.equal((await h.scan(h.addTab())).status, 'off');
+  await h.disable();
+  assert.equal((await h.message({type: 'phishing.status'})).health, 'not-included');
+  assert.equal(h.ports.length, 0); assert.deepEqual(h.sent, []);
+});
+
+test('missing, malformed or unreadable package feature metadata fails closed without inference', async t => {
+  for (const buildInfo of [{}, {phishingProtection: {included: 'true'}}, {phishingProtection: {included: 1}}, null, new Error('read failed')]) {
+    const h = await harness(t, {stored: true, registered: true, buildInfo});
+    const status = await h.message({type: 'phishing.status'});
+    assert.equal(status.included, false); assert.equal(status.enabled, false); assert.equal(status.health, 'unavailable');
+    await assert.rejects(h.enable(), /not included/);
+    assert.equal(h.local.phishingProtection.enabled, false); assert.equal(h.scripts.size, 0); assert.equal(h.ports.length, 0);
+  }
+});
+
+test('model-inclusive builds retain enabled preference and initialize the packaged native model', async t => {
+  const h = await harness(t, {stored: true});
+  const status = await h.message({type: 'phishing.status'});
+  assert.equal(status.included, true); assert.equal(status.enabled, true); assert.equal(status.health, 'ready');
+  assert.equal(h.local.phishingProtection.enabled, true); assert.equal(h.scripts.size, 1);
+  assert.deepEqual(h.sent.map(request => request.type), ['status']);
 });
 
 test('settings accept the actual extension-tab sender and hash, and reject web/foreign page controls', async t => {

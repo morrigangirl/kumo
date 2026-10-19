@@ -1,6 +1,6 @@
 # Apple Passwords integration boundary
 
-The selected signing team is Carson Press LLC (`PV65ZWXCWX`), configured in `config/apple-signing.json`. Run `python3 scripts/check-signing.py` to inspect the team's public signing metadata. The installed development identity does not supply a Developer ID distribution certificate or Kumo's managed browser-passkey provisioning profile; those are still absent. Ordinary native AppKit password AutoFill and managed browser passkeys remain separate capabilities.
+The selected signing team is Carson Press LLC (`PV65ZWXCWX`), configured in `config/apple-signing.json`. Run `python3 scripts/check-signing.py` to inspect the team's public signing metadata. A valid Developer ID Application identity is now installed for that team. Kumo's approved managed browser-passkey provisioning profile is still absent; the distribution certificate alone does not grant that capability. Ordinary native AppKit password AutoFill and managed browser passkeys remain separate capabilities.
 
 Reviewed against Apple's public documentation and the installed macOS 27.0 SDK on 2026-10-18. The SDK was found through `xcrun --show-sdk-path`; AuthenticationServices headers and its Swift interface were inspected. Initial builds used Xcode's macOS 26.5 SDK and Swift 6.3.2. After the owner accepted the updated Xcode license, Xcode 27.1 selected SDK 27.0 and Swift 6.4; all three compile-only API probes and the 93 synthetic native-panel assertions passed again with that toolchain. The host reports macOS 27.0.1.
 

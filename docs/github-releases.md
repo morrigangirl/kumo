@@ -22,17 +22,25 @@ signing key already exists in the build Mac's login Keychain under
 [`config/release.json`](../config/release.json). The release tools do not export
 private keys or accept private keys as command arguments.
 
-This update channel is implemented but has not been published. The current Mac
-still needs the selected team's **Developer ID Application** identity and an
-existing `notarytool` Keychain profile. Apple Development signing remains a
-local development build. See [production signing](signing.md) for those checks.
+This update channel is implemented but has not been published. The Carson Press
+LLC **Developer ID Application** identity is now installed on the build Mac,
+and the notarization Keychain profile has been configured and authenticated.
+Successful notarization and stapling are still required before the production
+app can be published with updates enabled. Apple
+Development signing remains a local development build. See [production
+signing](signing.md) for those checks.
 
-The current bundled PhishLang checkpoint is explicitly marked
-`localDevelopmentOnly: true`. Production preparation and verification reject
-that metadata before signing or notarization. Its public redistribution status
-must be resolved, or a separately verified package must omit the experimental
-model, before the first binary release. The paper's license alone does not
-change this build metadata.
+The first public binary excludes the experimental PhishLang checkpoint and its
+native inference helper. Local dangerous-domain blocking and ClamAV download
+scanning remain included. Package with `--without-phishlang`; the release
+workflow uses this option. Model preparation and its Python 3.9 conversion
+dependencies are not required for this release.
+
+The optional development checkpoint remains marked
+`localDevelopmentOnly: true`. Production preparation and verification reject that metadata before
+signing or notarization if it is included. Its redistribution status must be
+resolved before a future model-inclusive public binary. The paper's license
+alone does not change this build metadata.
 
 ## Prepare a release
 
@@ -62,8 +70,10 @@ requirements. Do not use the upstream preview for a release.
 python3 scripts/prepare-sparkle.py
 python3 scripts/prepare-release-vendor.py
 python3 scripts/prepare-malware-feed.py
-/usr/bin/python3 scripts/prepare-phishlang.py
-scripts/build-source.sh package --work-dir build/release-source-0.1.0-202610190001
+scripts/build-source.sh build --work-dir build/release-source-0.1.0-202610190001
+python3 scripts/package.py \
+  --engine-app build/release-source-0.1.0-202610190001/recipe/build/src/out/Default/Chromium.app \
+  --without-phishlang
 
 python3 scripts/github-release.py doctor
 python3 scripts/github-release.py prepare \
@@ -147,9 +157,10 @@ attach this signing runner to pull request workflows. A current Actions Runner
 supporting checkout v6 is required.
 
 Install Xcode and accept its license; provide the source build's documented
-Node and storage prerequisites, Python 3.12+ for safe Sparkle archive preparation, plus Python 3.9 for the pinned PhishLang
-conversion wheels. Install the selected team's Apple Development and Developer
-ID identities, the dedicated Sparkle key, and the existing notarytool profile
+Node and storage prerequisites, and Python 3.12+ for safe Sparkle archive
+preparation. The public release omits PhishLang, so it needs no model conversion
+wheels or separate Python 3.9 runtime. Install the selected team's Apple
+Development and Developer ID identities, the dedicated Sparkle key, and the existing notarytool profile
 in that runner's Keychain. The Keychain must permit these signing tools in the
 runner session. This workflow deliberately does not export certificates,
 import private-key secrets, create signing accounts or bypass Keychain prompts.
@@ -162,7 +173,8 @@ Set these environment variables in the GitHub `github-release` environment:
 | `KUMO_NOTARY_PROFILE` | Name of the installed notarytool Keychain profile |
 | `KUMO_PASSKEY_PROFILE` | Optional local path of the approved Developer ID browser-passkey profile |
 
-The workflow builds the exact checked out commit, signs and notarizes it,
+The workflow builds the exact checked out commit, packages it with
+`--without-phishlang`, signs and notarizes it,
 prepares and verifies the assets, then uploads a draft. Its **publish** input
 defaults to false. The scoped GitHub token is used only for the upload step.
 The workflow itself has not been dispatched during local implementation.
