@@ -1,0 +1,9 @@
+{
+  "name": "@kumo/agent-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local, permission-gated browser tools for Codex and Claude Code",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

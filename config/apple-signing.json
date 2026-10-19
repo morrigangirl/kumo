@@ -1,0 +1,6 @@
+{
+  "teamId": "PV65ZWXCWX",
+  "teamName": "Carson Press LLC",
+  "bundleIdentifier": "app.kumo.browser",
+  "browserPasskeyEntitlement": "com.apple.developer.web-browser.public-key-credential"
+}

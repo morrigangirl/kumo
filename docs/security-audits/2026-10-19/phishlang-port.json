@@ -1,0 +1,846 @@
+{
+  "schemaVersion": 1,
+  "checkedAtUtc": "2026-10-19T16:41:51.542251+00:00",
+  "status": "local-development-port-verified",
+  "app": "/Volumes/Creative/software-code-utilities/kumo-browser/dist/Kumo.app",
+  "enablePath": "Kumo Settings > Privacy & security > Enable local warnings",
+  "defaultEnabled": false,
+  "engine": {
+    "version": "155.0.8059.84",
+    "commit": "5869fe313571d75152b77813cf0a4ee26a4e6df0",
+    "sourceCompiledLocally": true,
+    "reusedVerifiedEngine": true,
+    "nativeInputFingerprint": "6a5dd6ca1a044b5de1d52b033188548c9a477bca196f25dca53642ce2ef875cc",
+    "embeddedReceiptSHA256": "1f2af548aa9a52f3325471b2627ab950784874ba0815db06884b08980d22afb3"
+  },
+  "signing": {
+    "team": "PV65ZWXCWX",
+    "distribution": "Apple Development",
+    "notarized": false,
+    "outerCDHash": "5de26d296e64ee034b6c0e24d91af74525fc46d0",
+    "helperCDHash": "28609ccc185cecc55038a803c8d0aa7ee2dde193",
+    "helperSHA256": "0c289357299ee408a06334dbaf790a25bad77f837a8981a49ab2593334388446",
+    "flags": "0x12a00",
+    "helperEntitlements": {
+      "com.apple.security.app-sandbox": true
+    },
+    "strictDeepVerificationPassed": true
+  },
+  "model": {
+    "source": "https://github.com/UTA-SPRLab/phishlang",
+    "commit": "6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd",
+    "conversionLockSHA256": "6fa0a5f28ba06c6220cf8474a3916ded8c220e2f7f6a23f6688c51147055f490",
+    "compiledDirectorySHA256": "4bbcaf00ab81fdf8845b7ad149bf7b3dddd55c0d45a8e65342af1d3d52da106a",
+    "compiledBytes": 98273259,
+    "computeUnits": "CPU_ONLY",
+    "precision": "FLOAT32",
+    "paperLicense": "CC-BY-4.0",
+    "rightsStatus": "unspecified-code-and-weights",
+    "localDevelopmentOnly": true
+  },
+  "checks": {
+    "javascript": {
+      "passed": 102,
+      "failed": 0,
+      "skipped": 0,
+      "phishingWorker": 21,
+      "phishingExtractor": 15
+    },
+    "swiftMethods": 13,
+    "tokenizerFixtures": 16,
+    "packageTests": 28,
+    "conversionSyntheticCases": 10,
+    "conversionMaximumScoreDifference": 2.339482307434082e-06,
+    "finalNativeChecks": 18,
+    "nativeBenchmarks": 3,
+    "actualBrowser": {
+      "passed": true,
+      "scenarioGroups": 6,
+      "nativeRequests": 8,
+      "actualClassifications": 6,
+      "modelVersion": "6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd",
+      "hostSHA256": "0c289357299ee408a06334dbaf790a25bad77f837a8981a49ab2593334388446",
+      "nativeElapsedMs": [
+        13.048999942839146,
+        30.082750017754734,
+        7.094166590832174,
+        10.761291719973087,
+        7.639333372935653,
+        13.119083363562822
+      ],
+      "netlogEvents": 719,
+      "httpURLCount": 4,
+      "httpOrigins": [
+        "http://127.0.0.1:58773"
+      ],
+      "nonLoopbackHTTPURLs": [],
+      "externalPageRequests": [],
+      "nativePrivateSentinelPresent": false,
+      "helperEvidence": {
+        "browserPid": 36793,
+        "helperPid": 36845,
+        "noInternetSocketsAtObservation": true
+      },
+      "cleanup": {
+        "temporaryRemoved": true,
+        "ownedRemaining": [],
+        "passed": true
+      },
+      "screenshotVisualReview": "PASS: readable warning, origin only, both navigation controls visible; no clipping.",
+      "artifacts": {
+        "results.json": {
+          "bytes": 6731,
+          "sha256": "9a4e08f8cfa7f783c227631e2277d9c6cd6400159962ab7117c5dd4f7c0e5495"
+        },
+        "cleanup.json": {
+          "bytes": 72,
+          "sha256": "db99a5177389b98b012506d43c1c8d286b7e314def1b8c3dd96a6eed7f6feeed"
+        },
+        "netlog.json": {
+          "bytes": 156650,
+          "sha256": "ae050f6c6997602cee10f8ab279663a50fd0bde7bd9b27e40da56a4750a2f1b9"
+        },
+        "actual-warning.png": {
+          "bytes": 42924,
+          "sha256": "d52154f6ea65c140516668c84187a9a9eaf102955e7980b98062cf4981c7bea0"
+        }
+      },
+      "limits": [
+        "Synthetic fixtures establish integration, not phishing accuracy or calibration.",
+        "The no-sockets observation is a point-in-time check of the actual native helper.",
+        "Permission prompts are pregranted only in the copied disposable QA manifest.",
+        "Chromium NetLog checks browser HTTP URL events; it does not capture native helper network syscalls."
+      ]
+    },
+    "artifactReview": {
+      "passed": true,
+      "checkedAt": "2026-10-19T16:41:02.211656+00:00",
+      "app": "/Volumes/Creative/software-code-utilities/kumo-browser/dist/Kumo.app",
+      "extensionSourceEquality": true,
+      "modelAssetEquality": true,
+      "modelLockAndRightsMetadata": true,
+      "immutableSourceReceiptAndFingerprint": true,
+      "noPythonRuntimeBundledOrRequiredByModelHost": true,
+      "helperSHA256": "0c289357299ee408a06334dbaf790a25bad77f837a8981a49ab2593334388446",
+      "browserOrInferenceRuns": 0,
+      "buildOrSourceEdits": 0,
+      "strictDeepTeamSignatureVerification": true,
+      "outerCDHash": "5de26d296e64ee034b6c0e24d91af74525fc46d0",
+      "helperCDHash": "28609ccc185cecc55038a803c8d0aa7ee2dde193",
+      "helperSandboxEntitlements": {
+        "com.apple.security.app-sandbox": true
+      },
+      "generatedEngineVersionException": "Source extension/engine-version.js is the default .39 preview placeholder; packaged engine-version.js correctly declares .84."
+    },
+    "securityRerun": [
+      {
+        "check": "agents",
+        "command": [
+          "node",
+          "scripts/smoke-agents.mjs"
+        ],
+        "startedAtUtc": "2026-10-19T16:37:19.523642+00:00",
+        "completedAtUtc": "2026-10-19T16:37:21.714159+00:00",
+        "exitCode": 0
+      },
+      {
+        "check": "store-script-guard",
+        "command": [
+          "node",
+          "scripts/smoke-store-script-guard.mjs"
+        ],
+        "startedAtUtc": "2026-10-19T16:37:21.714526+00:00",
+        "completedAtUtc": "2026-10-19T16:37:27.559541+00:00",
+        "exitCode": 0
+      },
+      {
+        "check": "security-status",
+        "command": [
+          "node",
+          "scripts/smoke-security.mjs"
+        ],
+        "startedAtUtc": "2026-10-19T16:37:27.559865+00:00",
+        "completedAtUtc": "2026-10-19T16:37:28.480828+00:00",
+        "exitCode": 0
+      },
+      {
+        "check": "startup-privacy",
+        "command": [
+          "node",
+          "scripts/smoke-privacy.mjs"
+        ],
+        "startedAtUtc": "2026-10-19T16:37:28.481153+00:00",
+        "completedAtUtc": "2026-10-19T16:37:45.298836+00:00",
+        "exitCode": 0
+      },
+      {
+        "check": "tls-tcp",
+        "command": [
+          "node",
+          "scripts/check-network.mjs",
+          "--tcp"
+        ],
+        "startedAtUtc": "2026-10-19T16:37:45.299535+00:00",
+        "completedAtUtc": "2026-10-19T16:37:46.410669+00:00",
+        "exitCode": 0
+      }
+    ]
+  },
+  "benchmarks": {
+    "summary": {
+      "checksPassed": 18,
+      "benchmarksPassed": 3,
+      "helperBinarySHA256": "0c289357299ee408a06334dbaf790a25bad77f837a8981a49ab2593334388446",
+      "outerCDHash": "5de26d296e64ee034b6c0e24d91af74525fc46d0",
+      "helperCDHash": "28609ccc185cecc55038a803c8d0aa7ee2dde193",
+      "actual8GBHardwareQualification": false,
+      "blockers": [],
+      "benchmarkConditions": {
+        "freshHostProcessPerCase": true,
+        "filesystemCachesPurged": false,
+        "memoryMetric": "Darwin ru_maxrss host-process high-water bytes, not browser/system usage",
+        "inferenceTimeIncludesTokenization": true,
+        "inferenceTimeExcludesModelLoad": true,
+        "wallTimeIncludesProcessStartAndModelLoad": true
+      },
+      "hardware": {
+        "hw.memsize": "25769803776",
+        "machdep.cpu.brand_string": "Apple M4 Pro"
+      }
+    },
+    "cases": [
+      {
+        "case": "cold-short",
+        "exitCode": 0,
+        "wallSeconds": 0.04323666705749929,
+        "result": {
+          "available": true,
+          "coverageLimited": false,
+          "elapsedMs": 12.43862509727478,
+          "id": "cold-short",
+          "modelVersion": "6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd",
+          "ok": true,
+          "peakResidentBytes": 111050752,
+          "probability": 0.0033296844578752337,
+          "threshold": 0.9,
+          "tokenCount": 14,
+          "truncated": false,
+          "verdict": "no-signal",
+          "windows": 1
+        },
+        "stderr": ""
+      },
+      {
+        "case": "max-specials",
+        "exitCode": 0,
+        "wallSeconds": 0.09333050006534904,
+        "result": {
+          "available": true,
+          "coverageLimited": true,
+          "elapsedMs": 63.46450001001358,
+          "id": "max-specials",
+          "modelVersion": "6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd",
+          "ok": true,
+          "peakResidentBytes": 111181824,
+          "probability": 0.8748047161338517,
+          "threshold": 0.9,
+          "tokenCount": 6553,
+          "truncated": true,
+          "verdict": "no-signal",
+          "windows": 8
+        },
+        "stderr": ""
+      },
+      {
+        "case": "maximum-text",
+        "exitCode": 0,
+        "wallSeconds": 0.04651454195845872,
+        "result": {
+          "available": true,
+          "coverageLimited": false,
+          "elapsedMs": 16.359166707843542,
+          "id": "maximum-text",
+          "modelVersion": "6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd",
+          "ok": true,
+          "peakResidentBytes": 111116288,
+          "probability": 0.0011285768940546086,
+          "threshold": 0.9,
+          "tokenCount": 1,
+          "truncated": false,
+          "verdict": "no-signal",
+          "windows": 1
+        },
+        "stderr": ""
+      }
+    ]
+  },
+  "limitations": [
+    "Synthetic integration/parity tests do not establish phishing accuracy or calibration; an ordinary login fixture was strongly flagged.",
+    "Classification happens after page load and does not comprehensively intercept credentials or script exfiltration.",
+    "8 GB hardware qualification remains unperformed; measurements used an M4 Pro with 24 GB RAM.",
+    "Model/repository artifact redistribution rights remain unspecified in upstream metadata.",
+    "Production signing/notarization and automatic browser/security-data/model update delivery remain open.",
+    "The prior CVE records were not freshly fetched again for this port; the compiled Chromium engine is unchanged."
+  ],
+  "sourceSHA256": {
+    "config/phishlang-model-lock.json": "6fa0a5f28ba06c6220cf8474a3916ded8c220e2f7f6a23f6688c51147055f490",
+    "scripts/prepare-phishlang.py": "448123f2f26608b3094d08689b6b932b4ee310d329655ce1369fd8dd853b1c5a",
+    "scripts/build-phishing.sh": "81f86d77d0e84493e7ebc9d392249021b5c1029dc787ede7e68b78926ecfc84b",
+    "scripts/package.py": "ab95ce081cbd8c76fba14d5a6871408ecd4e3999750c5f6722f548a5f89a2602",
+    "scripts/test_phishing_package.py": "bb317cb3870d24e9f26d6219b378245164c4461c839aa7519245e778a6a584eb",
+    "scripts/smoke-phishing.mjs": "d7c0d519114d1f60c49549fe721ad1c85985dc9783a848f8b24835d9cd5ab525",
+    "native/launcher/main.swift": "95277a424013b0bb14a415e2e351edf38ef03cdfdd472512e0a9f723df9c775e",
+    "native/phishing/Package.swift": "b1e6d5fc35b9cf1dc7884a7790b59af7725c88e408be15bc0d71eeee1f42e965",
+    "native/phishing/NOTICE.md": "179127302408c2c593e0562b54797df931bbce66728512a252537f67c02969be",
+    "native/phishing/LICENSE-MobileBERT.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "extension/background.js": "d80eaa2a37c1a94f87b4515211ce6e530893d9b7e765b05a8ea9b35df9b6537b",
+    "extension/manifest.json": "d711d0a7a2fec15d01db6de7342bf9314e00d13f4f2fe8d27c27844003d6cc8a",
+    "extension/newtab.html": "6a9ced301161a217199427bd7b4e342a82cfcab4e2672cbed2b15c8ae3f72505",
+    "extension/newtab.js": "de7eaf924e1e5dbf15cd2ec41437244ad766954e3d46d9faab42b895b7aaf912",
+    "extension/phishing-background.js": "30b95bf51d00d80afe3ac2cd346f0bdda6d976202344d884c558f8de1073e7b6",
+    "extension/phishing-content.js": "7c620213c0188f2f2f18491698772d43d08a1e9964d176d3baa12627a0bec2ae",
+    "extension/phishing-warning.html": "53448d2d77e768c2391bfd00e872a49e4679629fae31fb18141902649228fa63",
+    "extension/phishing-warning.js": "cc6eace984c7a3d3343ed62e71f1c37fbbfedef1083a31d7ad83ff58412905a9",
+    "tests/phishing-background.test.mjs": "8796327ffbbccf7be780d9d2b7257352ac45aed54535c3a7afe86175c9f763d8",
+    "tests/phishing-content.test.mjs": "a8264f9abb2c1a7ef2aedaf0fe3fd1a00b46c2f1ddfafce3204bb154d93ca6e1",
+    "native/phishing/Sources/KumoPhishingCore/Detector.swift": "0cd1a4b8437f7fb92e807efbed5837caa5d5a7c6420d6735093e1f7ba0aa0e63",
+    "native/phishing/Sources/KumoPhishingCore/Protocol.swift": "86ec4b46d85d3245583d51864b95f434f7107ee2a7f69bc84850aa914b226503",
+    "native/phishing/Sources/KumoPhishingCore/Tokenizer.swift": "4d7061624c24dd82c35dfc15ca7df00b5bcd43f1f3d8ed6e56a2a2357564e061",
+    "native/phishing/Sources/KumoPhishingHost/main.swift": "c22d51b542f209f7348fc30efef3df247680f3a3ea16426e220103aac2fd34ed",
+    "native/phishing/Tests/KumoPhishingCoreTests/PhishingTests.swift": "2732de2f349e4fc835c32fd710e2c1741ea62df13b802785561d31e4c20addc1"
+  },
+  "evidence": {
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/extension-equality.json": {
+      "bytes": 3142,
+      "sha256": "bcc836904cc69b457c73d8ee5b75defd440a2275d0e395eaf39635c18ca4eefc"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/helper-codesign.txt": {
+      "bytes": 1234,
+      "sha256": "7a5a5f305b4e1f07a2f6dbe89baff2e695e1d1e179962375bcccfe7fc1050b57"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/helper-dynamic-libraries.txt": {
+      "bytes": 1584,
+      "sha256": "15cd8a36c28edfc1322784521ad39744b8588e1dfcb6925b1988534a0d95fd53"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/helper-entitlements.plist": {
+      "bytes": 232,
+      "sha256": "f8b4cfc5e7c5076be716c5a3e37f8f6b03db3f5c47220215175e9ea3cd9ef6f0"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/model-artifacts.json": {
+      "bytes": 1938,
+      "sha256": "9e7a93e06371d237a81cac3e4260944dd0581ce8972f6cc69adcf05ff3ce0b01"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/outer-codesign.txt": {
+      "bytes": 1190,
+      "sha256": "d66d8acd798a50afd829b728fe445001fb115631b163c503618b6ae79db640ea"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/__future__.cpython-39.pyc": {
+      "bytes": 4212,
+      "sha256": "bf10df78e7d26df8f99f5308c03d7be47de137804bfa03a21ab7ce1aa6f494df"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/_bootlocale.cpython-39.pyc": {
+      "bytes": 1313,
+      "sha256": "2151a5667979b53669ae4e82421d7f849d538574de99bb2216c0afa7a8e114f8"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/_collections_abc.cpython-39.pyc": {
+      "bytes": 31823,
+      "sha256": "04c4ae61832d3a86b484eb6851e18bb4aa042211e3b92a5a6449ed6b0b991480"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/_compression.cpython-39.pyc": {
+      "bytes": 4284,
+      "sha256": "133384c41464b723c574c7a8cad89f6a30b882d810823ff995c310b772a9c7a9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/_sitebuiltins.cpython-39.pyc": {
+      "bytes": 3587,
+      "sha256": "940d7a22155711d1728b15ec47b0f373c5b9a15a545530179f8f7587f032c032"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/_strptime.cpython-39.pyc": {
+      "bytes": 16101,
+      "sha256": "8524f3a3eb4ca311c2630da3713e7b8ad32de359bf64cf22979fb1b718ce36af"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/_weakrefset.cpython-39.pyc": {
+      "bytes": 7759,
+      "sha256": "d34a76153a9d37b68beaff607fbff2c737d6f5dc2a7ac4e24740c6f65cc89429"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/abc.cpython-39.pyc": {
+      "bytes": 5861,
+      "sha256": "c734028533c41eb5abf3128e43ae7bcfac4b1dc2ca4a61ab72c617ebec27e130"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/argparse.cpython-39.pyc": {
+      "bytes": 63475,
+      "sha256": "cedf92b1e661825c838adba83e3db9d4af9c25f242fb95fd2abda5aba47e264e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/bisect.cpython-39.pyc": {
+      "bytes": 2436,
+      "sha256": "615b3c601962a5e25287268b50a564eac6edf239134745e783098a8a87f13335"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/bz2.cpython-39.pyc": {
+      "bytes": 11631,
+      "sha256": "b95635a683dff38ba9aaf524e187bc7dce55af18847eb50e8c7118976d940939"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/calendar.cpython-39.pyc": {
+      "bytes": 27117,
+      "sha256": "d18b04739d9a48fc1cce92029c5ab4b97bc6e6038942826bafb5fd3452606c84"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/codecs.cpython-39.pyc": {
+      "bytes": 33974,
+      "sha256": "5a267b63668105d327bb110fe303d7d24faa989df4b28ef8d0797de25a994cc3"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/collections/__init__.cpython-39.pyc": {
+      "bytes": 48187,
+      "sha256": "d0630acb6e7880140eb3126e29183b03a1e7d8e25f6247093e7743d6357606e9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/collections/abc.cpython-39.pyc": {
+      "bytes": 390,
+      "sha256": "5c3ded723bcc6ed0b9fa45244e96884e5be1ce92c8233e7dcc056baeb2cb50a9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/configparser.cpython-39.pyc": {
+      "bytes": 45955,
+      "sha256": "72665ea609cd750bf7f602cd60d39f081228b41e367e8e7163949ef5bd58d8f3"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.cpython-39.pyc": {
+      "bytes": 19574,
+      "sha256": "46c126440ab2982a1782355c4cda9f47140ccf04a6ba18177273d985288d5d6f"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/copyreg.cpython-39.pyc": {
+      "bytes": 4516,
+      "sha256": "692d40213e0f7916d9b8771d4abd38919db44df04fa5092089ebd0fa59436a17"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/datetime.cpython-39.pyc": {
+      "bytes": 58183,
+      "sha256": "23230c6a552bc3564e27d97f404dc9c7a9c5e4ded57057837a4c1d63b234ea04"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/encodings/__init__.cpython-39.pyc": {
+      "bytes": 4011,
+      "sha256": "9782d8bf3fa13e0268436eb8dd4e19e3bcf3308abc4d8ee729ea2dcb63baaa78"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/encodings/aliases.cpython-39.pyc": {
+      "bytes": 6416,
+      "sha256": "986de019d94f57d0bb02842417de86a7db864e26f0f71bdcef538623a2d1957e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/encodings/cp437.cpython-39.pyc": {
+      "bytes": 7934,
+      "sha256": "fd9e90c407b39e0b5737cf4a769673f20d64a9deecffdd69178e9093fad19a9d"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/encodings/latin_1.cpython-39.pyc": {
+      "bytes": 1981,
+      "sha256": "f094ab0c6fa1f1fbe5d1ce899793a961ac8ef88877df083daecb93528f88855a"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/encodings/utf_8.cpython-39.pyc": {
+      "bytes": 1718,
+      "sha256": "0f0dcc438d37ad7f105de4320371bf14aa86a73ec7de5b336c95a221179e4449"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/enum.cpython-39.pyc": {
+      "bytes": 26106,
+      "sha256": "b5f2c51589305c8d7524aa83e1a03bccacf8adb952dcc42ff8d2cd87cdbdeda6"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/fnmatch.cpython-39.pyc": {
+      "bytes": 4028,
+      "sha256": "5c3277310bee256794c375ed3968b739a097deb1d1168653b4939b6af0f2432c"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/functools.cpython-39.pyc": {
+      "bytes": 28268,
+      "sha256": "abe4373163203d665e320a519952749493ab25c6c65f2ba26aca4c44afbaea36"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/genericpath.cpython-39.pyc": {
+      "bytes": 4110,
+      "sha256": "6c3691cb5941585151d80751946a5728c32987ded54149e527cc91d670682472"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/gettext.cpython-39.pyc": {
+      "bytes": 18159,
+      "sha256": "c4cbd32554fc4525ec1e0db2b55953d53f7fbbce96bb7d01f0b2836fe83a7a07"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/hashlib.cpython-39.pyc": {
+      "bytes": 6777,
+      "sha256": "1207c8f7b1f9772f17cfb6881ae2dfad48825ad7b91917f225bb894ddef10287"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/heapq.cpython-39.pyc": {
+      "bytes": 14126,
+      "sha256": "da5f323cb6910e6b83a89f22ec8e88343bc091f39113b1976489335b0579fb72"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/__init__.cpython-39.pyc": {
+      "bytes": 3919,
+      "sha256": "98dbe65b85438099a90f8f56902789c79181f2df1da1c1197c1ce02fd85a0d1a"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/abc.cpython-39.pyc": {
+      "bytes": 16903,
+      "sha256": "ea12db7c28c60fdea67cb40be00fe330e193138f555e385c5a7adaf84bb3724b"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/machinery.cpython-39.pyc": {
+      "bytes": 1050,
+      "sha256": "103a755c05ea085cbe07bd66f0e8071c29e6f44714dc0339450985eac839f7a3"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/util.cpython-39.pyc": {
+      "bytes": 9408,
+      "sha256": "9a37bd5ec3e9cca2a3217e7d406090fb7a2205822b0966d97adde7313100723d"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/io.cpython-39.pyc": {
+      "bytes": 3494,
+      "sha256": "6fef835638de28041aead173a35dc94d79ae09f8ea633980e41b832bd26993dc"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.cpython-39.pyc": {
+      "bytes": 12379,
+      "sha256": "55857cf973e0c6039cd31017ef86f7fda7909f5821cd230d3aba548391d8e4e2"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.cpython-39.pyc": {
+      "bytes": 9894,
+      "sha256": "ab7603e96db4e97d83a27574c19970685ea0975cc921c8370b79a10f4a61a528"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.cpython-39.pyc": {
+      "bytes": 11217,
+      "sha256": "32761b0e86aac11240d7ea06f26c235bf07969a443f02020ca390de202d3da01"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/scanner.cpython-39.pyc": {
+      "bytes": 2039,
+      "sha256": "e2fe7c19de70a50080d82b1d933fb41ab3ce6f7e44b877476ec20bb6b043d890"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/keyword.cpython-39.pyc": {
+      "bytes": 1002,
+      "sha256": "a837f304b3a9f51696466142664d35894a299fa64b1e0e58c6e476242f14e56c"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/locale.cpython-39.pyc": {
+      "bytes": 34782,
+      "sha256": "e388567e05054e5dcb1e16c0b50f6297636fe10efa25b1b9aaa38c77fc7c14dd"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/lzma.cpython-39.pyc": {
+      "bytes": 12180,
+      "sha256": "b6b0d479bbb35d775f980cade493b33d8f3f129ae5648c65971b5404ad061b2f"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/ntpath.cpython-39.pyc": {
+      "bytes": 14628,
+      "sha256": "9ed62ea20b0b44dcfdd62e47d6d3e2a9aa25592000841ac69b24206825a1e0bd"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/operator.cpython-39.pyc": {
+      "bytes": 13834,
+      "sha256": "144a59318c4067bb73575270f5739da7407cd89e2b9071951fb17f2263514179"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/os.cpython-39.pyc": {
+      "bytes": 32083,
+      "sha256": "1f0dba516998a0db18eef1b0be965d6f138f9d2b13132989f7100ea50a33b5c3"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.cpython-39.pyc": {
+      "bytes": 44755,
+      "sha256": "8687ab0b589a7bbca412949460e6f69f96f4c55facfd0f476b14f794613e74ca"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/platform.cpython-39.pyc": {
+      "bytes": 26551,
+      "sha256": "d3f7ba19997dcbe83ce426d1f6980172ebf9b131e2afa7f4e89094a50e02f5bf"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/plistlib.cpython-39.pyc": {
+      "bytes": 23633,
+      "sha256": "3e5692d7c17a7477081689ae8521ed0f4f02b16db240acdd28bc6b46e15d1430"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/posixpath.cpython-39.pyc": {
+      "bytes": 10415,
+      "sha256": "0a2110cd5120f36bc27c2121c1a3aa493c71cf4b8b4b09ed7becd63912f21706"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/random.cpython-39.pyc": {
+      "bytes": 22129,
+      "sha256": "1cc9e10005012816118cd47b99e49861d4ea59943306ef63043e4b9db24c931b"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/re.cpython-39.pyc": {
+      "bytes": 14448,
+      "sha256": "8f103b84755def4c27e2759c4256eda7c4d248f005d55b1be11037a1b9361653"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/reprlib.cpython-39.pyc": {
+      "bytes": 5393,
+      "sha256": "26a02614bf7c8f696fa3d9976049e0b35b6d00150d44b08bc589915a4e0f2e2f"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/selectors.cpython-39.pyc": {
+      "bytes": 17331,
+      "sha256": "d08384135f3e8019f527059751aa06f5c0a7fc6c9c02bdab5abd846050881591"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/shlex.cpython-39.pyc": {
+      "bytes": 7820,
+      "sha256": "79f456207265dd2b89bf8601e89720b0102353e455772e260c64b2c3e9956b2e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/shutil.cpython-39.pyc": {
+      "bytes": 37926,
+      "sha256": "625c12485f12ba76484de4c915b793bdaabfc751be48d7fba9740742e81082a2"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/signal.cpython-39.pyc": {
+      "bytes": 2909,
+      "sha256": "7590fab114039fdd214b02a98426f66b434aaea77ae868cb18a17a0b74b29308"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/site.cpython-39.pyc": {
+      "bytes": 17480,
+      "sha256": "96a408cb57151ac38f78665c82a48cc5bb282a0b02e44928d55d5d039ed388e5"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/sre_compile.cpython-39.pyc": {
+      "bytes": 15139,
+      "sha256": "ea882cbda0a461fb7ae9c7d741505160fc0026e0facb1a123ef395a9b370cd01"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/sre_constants.cpython-39.pyc": {
+      "bytes": 6403,
+      "sha256": "54cf27c93c42d5c0e575499ffc75e6170bb877a009f642e8605635e497b23321"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/sre_parse.cpython-39.pyc": {
+      "bytes": 21689,
+      "sha256": "f2c637be29c8020cacef68ca5ba5e273fcac2c6f3d9f688fda04711cfa84ef50"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/stat.cpython-39.pyc": {
+      "bytes": 4458,
+      "sha256": "681c3a29f48eecb5759ec5df44c6b19da84a5dc6a57f5f0f753fc6971455b3ea"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/struct.cpython-39.pyc": {
+      "bytes": 392,
+      "sha256": "bddf8ac0e462305c7e6b429607a69fd05ce3a2f5429268836e9db2638ac42bd7"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.cpython-39.pyc": {
+      "bytes": 44232,
+      "sha256": "4514981a6a6a8b67e4e7d15f817f3029311563d7b4e0b30c46b5d45a976dbd27"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/tempfile.cpython-39.pyc": {
+      "bytes": 23452,
+      "sha256": "60b904140e741ba5d10c9ad4ea6de213a99989e21671f1bcb77c6f906e37c841"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/threading.cpython-39.pyc": {
+      "bytes": 42171,
+      "sha256": "d03aa8ab8a5ca6c146cf81367c295c747a80eb423d0fc6cfcecd0f006636fdc7"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/types.cpython-39.pyc": {
+      "bytes": 9307,
+      "sha256": "8d2ed60ca2054cb1e59e4d11018993c3c8ec5467abe259490d188b16cd68cfca"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/typing.cpython-39.pyc": {
+      "bytes": 71424,
+      "sha256": "1f785affdc6534e61cae72c1c86698b752d67e78bcdf61f0309b09e468d267d6"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/__init__.cpython-39.pyc": {
+      "bytes": 216,
+      "sha256": "03c02335f856aab664376c63ac93be433711fac9862a820e6184dfea6d1963c7"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/parse.cpython-39.pyc": {
+      "bytes": 35009,
+      "sha256": "bc0df11eaf83b44e6e97dd8faa89825868161e6a736d513951e7559e94ba1552"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/warnings.cpython-39.pyc": {
+      "bytes": 13691,
+      "sha256": "097396dd471271d3996d258f8c9e01b4aa728648cb2dbe557a459de7bb08986d"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/weakref.cpython-39.pyc": {
+      "bytes": 20244,
+      "sha256": "8497e23ab2c029be2a7ea64a9c215865bc46eca6fe2f4747c5272b6d82e04fb8"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/xml/__init__.cpython-39.pyc": {
+      "bytes": 778,
+      "sha256": "950588626d685bb321e8e71fa7f45562a3cdb69bfd64837ab673d447b4346611"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/xml/parsers/__init__.cpython-39.pyc": {
+      "bytes": 393,
+      "sha256": "7082d1c671fcee401f3b4ff18b1ad25cfe8c03adbe8e9792b74f343175b01214"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/xml/parsers/expat.cpython-39.pyc": {
+      "bytes": 422,
+      "sha256": "e136ee6389af876f69a1c8fc669da5022cd1d615f489bee4edd5e62b6c77b95e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Volumes/Creative/software-code-utilities/kumo-browser/scripts/build_receipt.cpython-39.pyc": {
+      "bytes": 11955,
+      "sha256": "990b0fe0a7dbbc8ca580451595d44ffc6e4d71470f46759b530c0e84520e7cab"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/pycache/Volumes/Creative/software-code-utilities/kumo-browser/scripts/source.cpython-39.pyc": {
+      "bytes": 23838,
+      "sha256": "9e052f98094020c7a8e9b89d9ee76f2a5eec782683bab964a86c21c7190edfce"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/runtime-inventory.json": {
+      "bytes": 850,
+      "sha256": "5f8f9009a89ecba943976edd8f732411e9ee17a2ee446f039a2cb7d75e211518"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/signatures.json": {
+      "bytes": 568,
+      "sha256": "f58d2d99b0ad23f1944c0dde3eaf67933398f5cb99ddb7cc37764cb99b55031c"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/source-provenance.json": {
+      "bytes": 2059,
+      "sha256": "cec23d783e89775eb721270a3861f17b5f8744a3dfacf623a74be4c3d3a7268e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/strict-deep-signature.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/summary.json": {
+      "bytes": 920,
+      "sha256": "7186087bb7282e35ae868e81ce1d9b80f81cb4ce7dbab2c62fc69b2271e4378d"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/verification.log": {
+      "bytes": 245,
+      "sha256": "e2a9b6e3284a58af9c5cb05e2fbaed78c6ec5ac3c0608c2ffd1c413a34f746f9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/artifact-review/verify-artifact.py": {
+      "bytes": 9248,
+      "sha256": "3855d0b2a3525d21190da6eb9219f128e42b0c22c2436dd08fb20304341240d2"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/full-js-tests-final.log": {
+      "bytes": 10251,
+      "sha256": "fd29ba448cc437b709b83c35dfcf14f5f6e31bc4c655700471530963dfdcd22d"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/full-js-tests.log": {
+      "bytes": 9844,
+      "sha256": "3a4d09c7649fe4155b2a5127c60442ed0954e4a8f2581cca739622e5a8cef8ad"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/mobilebert-license-fetch.json": {
+      "bytes": 194,
+      "sha256": "5ca2781566b5f383d889b772c1d64946e0f379c9eefe4abea339ef39b4e033d5"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/disable-document-check-fixed.json": {
+      "bytes": 101,
+      "sha256": "e5bb6c2c75aae8e676c19b325a1c026b85fb454fa6e3053d80f7e5d5fef98b5f"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/disable-document-check-fixed.mjs": {
+      "bytes": 2370,
+      "sha256": "757bb706b786065ecd1dacf067ea136b752af723810f15d945169b04dde8d404"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/disable-document-check-race.json": {
+      "bytes": 128,
+      "sha256": "de468be0f2acba3dc41c656cb652f70dd95f371dd32ecf729fae757d3927bff2"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/disable-document-check-race.mjs": {
+      "bytes": 2367,
+      "sha256": "f1f98737e77a36b4b18f10613cfa87837f8bc591f657e6e708925d4555ac78a3"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/package-tests-final.log": {
+      "bytes": 127,
+      "sha256": "d76ca9862f99b20d2b6b28205dd1bd916765b13a88c1afeddf7f979bd29e5340"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/package-tests-initial.log": {
+      "bytes": 127,
+      "sha256": "902456cc30ad84d4531da1d72ac1224d688ef2a8c43d5ebd746f1e4d739f4ba9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/package-tests-nested-helper.log": {
+      "bytes": 127,
+      "sha256": "48ed2bacba83af9f23ae14fcbd24c7eee9e62e1fc4aa409d16dd618f8549b36b"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/phishing-background-final-review.mjs": {
+      "bytes": 16406,
+      "sha256": "f7d7faa0a6d98c0b0728eba6702a178020023392c964738f7e6e6d4961d03f84"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/phishing-background-fixed-epochs.mjs": {
+      "bytes": 16460,
+      "sha256": "30b95bf51d00d80afe3ac2cd346f0bdda6d976202344d884c558f8de1073e7b6"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/phishing-background-queuefix.mjs": {
+      "bytes": 16323,
+      "sha256": "9dd867666771a2ed55a11e20ee8ad2a72cd2abb75274e4b0fb3e7bc81fc61204"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/phishing-background-reviewed.mjs": {
+      "bytes": 13885,
+      "sha256": "5068a2010fc68bae6c1771a56ab2c7885c1bd6dadf4e0dc0c3b3efe5e8c3cced"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/review.md": {
+      "bytes": 11204,
+      "sha256": "3b3e71b6eb7af120ed4a982b3b790bc3e2f7c6f928eb0f1fd8ddd7fbf481c143"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/warning-ticket-baseline-comparison.json": {
+      "bytes": 367,
+      "sha256": "47b9386595cc256c66c491552b20aa0ef0add66d7ccdcf19a3cce23be9c24482"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/warning-ticket-comparison.mjs": {
+      "bytes": 2299,
+      "sha256": "86c17d626808909ad856d0cfe11960b45b707b6207e68bfaa60e81724a55ad3d"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/warning-ticket-queuefix.json": {
+      "bytes": 313,
+      "sha256": "f7cf719e4c3accf4aded9018f7f395c698df39fbc69cbd94868cf4d6340a2b50"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/warning-ticket-race.json": {
+      "bytes": 367,
+      "sha256": "47b9386595cc256c66c491552b20aa0ef0add66d7ccdcf19a3cce23be9c24482"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/model-review/warning-ticket-race.mjs": {
+      "bytes": 2488,
+      "sha256": "d38a120eeab0ebcbe872068472ceffb06ce621b14d96a8a0fb1d45589d7e261e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/native-final/benchmarks.json": {
+      "bytes": 1640,
+      "sha256": "17321048f88b49958b43d9a22221ba1f07e59224646e8912202f7d516a13aec3"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/native-final/checks.json": {
+      "bytes": 4429,
+      "sha256": "9c097a083e38a42be32b915845c1bba68add9f1ea873205254a4c44d6ce7d8a8"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/native-final/helper-signature.txt": {
+      "bytes": 1234,
+      "sha256": "7a5a5f305b4e1f07a2f6dbe89baff2e695e1d1e179962375bcccfe7fc1050b57"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/native-final/outer-signature.txt": {
+      "bytes": 1190,
+      "sha256": "d66d8acd798a50afd829b728fe445001fb115631b163c503618b6ae79db640ea"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/native-final/summary.json": {
+      "bytes": 773,
+      "sha256": "26fe8eb25b090105ead74c34de201e71244e3a4dacf90430a9a877fbaff46fc6"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/package-001.log": {
+      "bytes": 4023,
+      "sha256": "ef16c4c35981a4d053a52861be4bfceec779ae9f1afbac5d06e7fc10fc09bed9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/package-002.log": {
+      "bytes": 4219,
+      "sha256": "35e892871b57533afc8aec7e39bc50a7c68ba2527069fc6bdc0e8cc99034ac51"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/phishing-background-final.log": {
+      "bytes": 2179,
+      "sha256": "1c7dc9b6a288bfa1116581c82c5a45be4c4e135b4be0053cd3da9aa9ccb71bd1"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/phishing-background-initial.log": {
+      "bytes": 1776,
+      "sha256": "a0fb7ed6d5681e1306d20dd9c93b531cb809332d4197d397a61d8cbd9d6d0089"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/post-runtime-cleanup.json": {
+      "bytes": 274,
+      "sha256": "b35958a127e2dcbfc118ee44766bd767c5fa88f686ef469d2d594532bcbec21a"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/post-runtime-signing.json": {
+      "bytes": 5773,
+      "sha256": "cef9f974cb7908ac0748b877b38fae290d727fd04bb86aa8fa2ccfcd9ade7e70"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/runtime-002/actual-warning.png": {
+      "bytes": 42924,
+      "sha256": "d52154f6ea65c140516668c84187a9a9eaf102955e7980b98062cf4981c7bea0"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/runtime-002/cleanup.json": {
+      "bytes": 72,
+      "sha256": "db99a5177389b98b012506d43c1c8d286b7e314def1b8c3dd96a6eed7f6feeed"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/runtime-002/netlog.json": {
+      "bytes": 156650,
+      "sha256": "ae050f6c6997602cee10f8ab279663a50fd0bde7bd9b27e40da56a4750a2f1b9"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/runtime-002/results.json": {
+      "bytes": 6731,
+      "sha256": "9a4e08f8cfa7f783c227631e2277d9c6cd6400159962ab7117c5dd4f7c0e5495"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/runtime-002/verification.json": {
+      "bytes": 1881,
+      "sha256": "104d1a410f1ff44a32e1dacf21152c8c1c729e4bc03e02366bdca14bf98d0926"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/runtime-002.log": {
+      "bytes": 7325,
+      "sha256": "4a05ec82502d16bc70da1886242e157c4b06958bba5e404d8f97f2c24c0c0d20"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/security-rerun/agents.log": {
+      "bytes": 2205,
+      "sha256": "8119a5ac25f037ceacdb22f69f5ef725eaaddb0747ac939bb2c08f9b9624696e"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/security-rerun/security-status.log": {
+      "bytes": 290,
+      "sha256": "4c1805a7ddcc1201b35fa28c3f1560f70380a0a97fb0a5cfe7766492c9d504d4"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/security-rerun/startup-privacy.log": {
+      "bytes": 646,
+      "sha256": "4267ad67ea4eb361b94762a8ddae68639d92e428b1bd9d7307e5a6b3d08065cd"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/security-rerun/store-script-guard.log": {
+      "bytes": 3492,
+      "sha256": "1b2c7d80a762ffcaf9f03a64ab6fb6b77a7db90989ffc26b69a7142a873eff3c"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/security-rerun/summary.json": {
+      "bytes": 1240,
+      "sha256": "be3fb32c553fdd3c5e628a80faca1c6c0029fff3a7b927986a696fa17b1a6263"
+    },
+    ".cache/qa/phishlang-port-2026-10-19/security-rerun/tls-tcp.log": {
+      "bytes": 189,
+      "sha256": "e2fb3c23320d956ae680352688953f1e0ca4e6b0aba6a787cd4780aaef1a8ea3"
+    }
+  }
+}

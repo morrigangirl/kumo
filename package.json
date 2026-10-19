@@ -1,0 +1,29 @@
+{
+  "name": "kumo-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A native macOS Chromium browser with local customization and optional agent control",
+  "type": "module",
+  "scripts": {
+    "build": "python3 scripts/package.py",
+    "source:doctor": "python3 scripts/source.py doctor",
+    "source:prepare": "scripts/build-source.sh prepare",
+    "source:build": "scripts/build-source.sh build",
+    "source:package": "scripts/build-source.sh package",
+    "test": "node --test tests/*.test.mjs agent-bridge/test/*.test.mjs",
+    "test:native": "sh scripts/test-native-passwords.sh",
+    "test:native-browser": "node scripts/smoke-native-passwords.mjs",
+    "test:browser": "node scripts/smoke-browser.mjs",
+    "test:agents": "node scripts/smoke-agents.mjs",
+    "test:search": "node scripts/smoke-search.mjs",
+    "test:dns": "node scripts/smoke-dns.mjs",
+    "test:privacy": "node scripts/smoke-privacy.mjs",
+    "test:download": "node scripts/smoke-download.mjs",
+    "test:extension": "node scripts/smoke-extension.mjs",
+    "test:store": "node scripts/smoke-store.mjs",
+    "check:network": "node scripts/check-network.mjs",
+    "check:signing": "python3 scripts/check-signing.py",
+    "release:doctor": "python3 scripts/sign-release.py --doctor",
+    "launch": "open dist/Kumo.app"
+  }
+}

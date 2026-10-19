@@ -1,0 +1,86 @@
+{
+  "windowStartUtc": "2026-09-19T14:07:52+00:00",
+  "windowEndUtc": "2026-10-19T14:07:52+00:00",
+  "windowTimeZone": "America/New_York",
+  "baseline": "155.0.8059.84",
+  "uniqueDesktopMentionedCves": 449,
+  "newlyPublishedCves": 445,
+  "olderCvesReannounced": 4,
+  "potentialMacOrSharedCves": 340,
+  "explicitOtherPlatformCves": 109,
+  "allCnaBoundsAtOrBelowKumo": true,
+  "aboveKumoFixedBoundCves": [],
+  "allCveAuthorityRecordsRetrieved": true,
+  "macOrSharedSeverity": {
+    "High": 125,
+    "Medium": 130,
+    "Low": 70,
+    "Critical": 15
+  },
+  "allMentionedSeverity": {
+    "High": 151,
+    "Medium": 175,
+    "Low": 98,
+    "Critical": 25
+  },
+  "platforms": {
+    "unspecified/shared": 324,
+    "Mac": 16,
+    "Android": 61,
+    "iOS": 26,
+    "Windows": 22
+  },
+  "fixedBounds": {
+    "151.0.7922.109": 1,
+    "153.0.8010.36": 3,
+    "154.0.8037.57": 108,
+    "154.0.8037.92": 32,
+    "155.0.8059.39": 247,
+    "154.0.8037.97": 11,
+    "155.0.8059.79": 37,
+    "155.0.8059.84": 10
+  },
+  "cnaDescriptionAndLessThanBoundsAgree": true,
+  "classificationIsNotPerCveExploitOrWholeForkProof": true,
+  "interpretation": "Uses the Google CNA English prior-to statement and matching exclusive lessThan bound; the CNA version field repeats that bound, so it is not treated as an inclusive vulnerable starting version. Numeric version coverage is vendor advisory coverage, not a proof that every fork patch is harmless or every exploit fails.",
+  "auditType": "Security review; no source/app rebuild or security-setting changes",
+  "confirmedCustomFindings": [
+    "KUMO-AUDIT-EXT-001",
+    "KUMO-AUDIT-EXT-002"
+  ],
+  "confirmedCustomFindingSeverity": "Medium",
+  "customFindingsConfirmedInPackagedSource": true,
+  "fullJsRegression": {
+    "passed": 51,
+    "failed": 0,
+    "log": ".cache/qa/security-sweep-2026-10-19/full-js-tests-with-local-sockets.log",
+    "sandboxAttempt": "EPERM creating local Unix sockets; repeated with required permissions, all51passed"
+  },
+  "newReproductionTests": {
+    "passed": 3,
+    "failed": 0,
+    "meaning": "Two existing flaws reproduced plus a missing-permission negative control; not fixes"
+  },
+  "existingOverlayChecks": {
+    "run": 28,
+    "passed": 27,
+    "skipped": 1,
+    "skipReason": "Pristine replay fixture sees already-applied source"
+  },
+  "nativeChecks": {
+    "commandRegressionPassed": 3,
+    "appKitSyntaxCheck": "PASS",
+    "newBrowserOrExploitTests": 0
+  },
+  "sourceReview": ".cache/qa/security-sweep-2026-10-19/source/source-review.md",
+  "independentUpstreamReview": ".cache/qa/security-sweep-2026-10-19/native/upstream-peer-review.json",
+  "independentExtensionReview": ".cache/qa/security-sweep-2026-10-19/native/extension-peer-review.json",
+  "cisaKevIntersectionCount": 0,
+  "noKnownExploitedIntersectionIsNotProofOfNoExploitation": true,
+  "productFilesModified": false,
+  "newSecurityDataFinding": "Without refreshed CT data, the bundled policy becomes untimely2026-11-29T13:35:40Z and source treats stale-build CT requirements as met. Currently timely.",
+  "completedAtUtc": "2026-10-19T14:22:41.429557+00:00",
+  "reportPeerReview": "PASS",
+  "reportSha256": "80321eca4ea69b65a4da7063593401230469928179e12c512318cb7dccc044fd",
+  "independentReportReview": ".cache/qa/security-sweep-2026-10-19/native/report-peer-review.json"
+}

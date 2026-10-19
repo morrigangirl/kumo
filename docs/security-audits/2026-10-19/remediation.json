@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "completedAtUtc": "2026-10-19T15:11:07.036105+00:00",
+  "status": "Both agent-control findings fixed and verified in rebuilt signed Kumo; bounded security checks passed; production release gaps remain",
+  "findings": [
+    {
+      "id": "KUMO-AUDIT-EXT-001",
+      "previousSeverity": "Medium",
+      "status": "fixed-and-verified",
+      "verification": [
+        "deterministic before/after regression",
+        "real packaged-browser UI/DOM/Native Messaging"
+      ]
+    },
+    {
+      "id": "KUMO-AUDIT-EXT-002",
+      "previousSeverity": "Medium",
+      "status": "fixed-and-verified",
+      "verification": [
+        "deterministic before/after regression",
+        "real packaged-browser UI/DOM/Native Messaging"
+      ]
+    }
+  ],
+  "engineVersion": "155.0.8059.84",
+  "sourceFingerprint": "6a5dd6ca1a044b5de1d52b033188548c9a477bca196f25dca53642ce2ef875cc",
+  "sourceReceiptSha256": "1f2af548aa9a52f3325471b2627ab950784874ba0815db06884b08980d22afb3",
+  "nativeEngineRecompiled": false,
+  "packaging": "Verified existing locally compiled .84 engine repackaged and re-signed with tested JS fixes",
+  "appCodeDirectoryHash": "0aab5e233283af5f9a69f4e3dd99faf866b0c959",
+  "signingTeam": "PV65ZWXCWX",
+  "signingMode": "Apple Development; not notarized",
+  "packagedJsMatchesSource": true,
+  "strictDeepSignatureBeforeAndAfterRuntime": "PASS",
+  "javascriptRegression": {
+    "passed": 66,
+    "failed": 0,
+    "added": 15,
+    "extensionAgentTests": 35,
+    "storeHelperTests": 8
+  },
+  "beforeAfter": {
+    "before": {
+      "positiveControlPass": 1,
+      "securityInvariantFailures": 3,
+      "expectedExitCode": 1
+    },
+    "after": {
+      "pass": 4,
+      "fail": 0,
+      "expectedExitCode": 0
+    },
+    "scope": "Exact isolated baseline/current production module copies; real handlers and injected function executed against deterministic Chrome/DOM shims. No product/browser/profile/build mutation; user-facing browser runtime verification is separate."
+  },
+  "agentRuntime": {
+    "passed": true,
+    "groups": 6,
+    "sensitiveFixtures": 9,
+    "rejectedSensitiveActions": 18,
+    "staleOriginRejectedWithRetainedDestinationPermission": true,
+    "refreshedExplicitGrantAndNormalControlWork": true,
+    "cleanupPassed": true,
+    "accountAccess": false
+  },
+  "otherRuntimeChecks": [
+    {
+      "check": "security-status",
+      "command": [
+        "node",
+        "scripts/smoke-security.mjs"
+      ],
+      "startedAtUtc": "2026-10-19T15:07:24.074612+00:00",
+      "completedAtUtc": "2026-10-19T15:07:24.992588+00:00",
+      "exitCode": 0
+    },
+    {
+      "check": "store-script-guard",
+      "command": [
+        "node",
+        "scripts/smoke-store-script-guard.mjs"
+      ],
+      "startedAtUtc": "2026-10-19T15:07:24.993336+00:00",
+      "completedAtUtc": "2026-10-19T15:07:30.775525+00:00",
+      "exitCode": 0
+    },
+    {
+      "check": "startup-privacy",
+      "command": [
+        "node",
+        "scripts/smoke-privacy.mjs"
+      ],
+      "startedAtUtc": "2026-10-19T15:07:30.775851+00:00",
+      "completedAtUtc": "2026-10-19T15:07:47.972722+00:00",
+      "exitCode": 0
+    },
+    {
+      "check": "tls-tcp",
+      "command": [
+        "node",
+        "scripts/check-network.mjs",
+        "--tcp"
+      ],
+      "startedAtUtc": "2026-10-19T15:07:47.973386+00:00",
+      "completedAtUtc": "2026-10-19T15:07:49.503258+00:00",
+      "exitCode": 0
+    },
+    {
+      "check": "tls-default",
+      "command": [
+        "node",
+        "scripts/check-network.mjs"
+      ],
+      "startedAtUtc": "2026-10-19T15:07:49.506535+00:00",
+      "completedAtUtc": "2026-10-19T15:07:50.636501+00:00",
+      "exitCode": 0
+    }
+  ],
+  "cveRerun": {
+    "retainedGoogleCnaRecordsRechecked": 449,
+    "potentialMacShared": 340,
+    "explicitOtherPlatform": 109,
+    "allVendorFixedBoundsAtOrBelowEngine": true,
+    "freshFeedRetrievedAtUtc": "2026-10-19T15:07:47.361000+00:00",
+    "newDesktopCves": [],
+    "scope": "Original exact30-day window, reparse and hash-check retained449CNA responses; fresh official release-feed check. Not individual exploit verification."
+  },
+  "nativeOverlayReceiptPackageRegression": {
+    "passed": 57,
+    "failed": 0,
+    "expectedSkipped": 1
+  },
+  "postRuntimeCleanupPassed": true,
+  "historicalAuditPreserved": {
+    "report": "report.md",
+    "sha256": "80321eca4ea69b65a4da7063593401230469928179e12c512318cb7dccc044fd",
+    "summary": "summary.json",
+    "unchanged": true
+  },
+  "remainingProductionGaps": [
+    "Automatic engine updates",
+    "Authenticated security-data delivery including CT/revocation/root constraints",
+    "URL/download reputation protection",
+    "Developer ID/notarization and distribution validation",
+    "Real Apple credential and managed browser-passkey validation"
+  ],
+  "conditionalCtStalenessDeadlineUtc": "2026-11-29T13:35:40Z",
+  "modifiedScopeHashes": {
+    "extension/background.js": "b267e1dbf10e4cb02796245c8089be1b9b17c098b57ae8f8fe7d5d4fe7011de4",
+    "extension/newtab.js": "3243622d8d20aed544399cc690808ead636de54a66e436d651421a662debaab3",
+    "tests/extension-agent.test.mjs": "3241487130bdfb4de07071fd2ce020d35fad4311197c884de5d5a82aa8bec985",
+    "scripts/smoke-agents.mjs": "a049b401e58949eda0311246917c95cd1760670b1e66c02e2610959e0129d3e0",
+    "docs/agents.md": "d6938e747b295939f6b3be09af07a57383950953b36ca0c564ecdf50b982a4ef",
+    "docs/security.md": "57e5263b7e842a843e6f9f6f325047d240c1e0637eb355024ef4e358009c9a69",
+    "docs/security-audits/2026-10-19/remediation.md": "bbd9e964c347a56befd5f4910981ba923c5e9f654609597f0c92e16445d21a93"
+  },
+  "evidenceDirectory": ".cache/qa/agent-security-fixes-2026-10-19",
+  "notClaimed": [
+    "Full Chromium/V8 regression or fuzz campaign",
+    "Per-CVE exploit validation or proof of every cross-major fix",
+    "Full Chrome security parity",
+    "Production readiness"
+  ]
+}

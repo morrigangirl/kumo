@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "chromiumVersion": "155.0.8059.84",
+  "macosPackaging": {
+    "repository": "https://github.com/ungoogled-software/ungoogled-chromium-macos.git",
+    "tag": "155.0.8059.39-1.1",
+    "commit": "b1238bb72b02cd36219991d9029c1c65183ea295",
+    "compatibilityPort": "Using the pinned39 macOS recipe with newer84 common patches; upstream macOS84 release is not claimed. Clean local compatibility validation required."
+  },
+  "ungoogledChromium": {
+    "repository": "https://github.com/ungoogled-software/ungoogled-chromium.git",
+    "commit": "c7b4b99027bb6f9f33848fdbee8a319a3ba3b238",
+    "tag": "155.0.8059.84-1",
+    "path": "vendor/ungoogled-chromium-core"
+  },
+  "sourceArchive": {
+    "url": "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-155.0.8059.84-lite.tar.xz",
+    "hashesUrl": "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-155.0.8059.84-lite.tar.xz.hashes",
+    "sha256": "2063834f528029ad02a6a3de6d229c3e8b19bc43864be397944cbda18d7ee680"
+  },
+  "rustArchive": {
+    "url": "https://static.rust-lang.org/dist/2026-09-09/rust-nightly-aarch64-apple-darwin.tar.xz",
+    "hashesUrl": "https://static.rust-lang.org/dist/2026-09-09/rust-nightly-aarch64-apple-darwin.tar.xz.sha256",
+    "sha256": "5bdf27279c2a800537eec697576adacd600564e391e6888a9029b8e098a7cdda"
+  },
+  "targetCpu": "arm64",
+  "engineBundle": "out/Default/Chromium.app",
+  "notes": "Source84 SHA256 is pinned from the official publisher hash file. Mac packaging39 and common core84 are independent clean Git pins for a local compatibility port. Rust SHA256 and upstream LLVM/Node SHA512 stay unchanged. The downloaded preview remains39 and is not security-current; this lock describes source only, not the installed runtime.",
+  "chromiumCommit": "5869fe313571d75152b77813cf0a4ee26a4e6df0",
+  "compatibilityLinker": {
+    "version": "23.1.3",
+    "repositoryCommit": "0d261d1ca552c95a8f007e061c787ac7132fbcbc",
+    "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/LLVM-23.1.3-macOS-ARM64.tar.zst",
+    "sha256": "a3f181b1176406893c097443e21b2a54b85afeac2d10eca3b6d251e6dca32eb3",
+    "archiveRoot": "LLVM-23.1.3-macOS-ARM64",
+    "binarySha256": "edde6ab11fb5258006ae0493ccaa3112c1a547aac36fe75c0317fb0ec559adea",
+    "binarySize": 146161536,
+    "relativePath": "third_party/kumo-lld/23.1.3-edde6ab11fb5258006ae0493ccaa3112c1a547aac36fe75c0317fb0ec559adea",
+    "attestationUrl": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/LLVM-23.1.3-macOS-ARM64.tar.zst.jsonl",
+    "attestationSha256": "aa66534f98db1de24900c344beffb6ff5a9a43363ee228040095112808c47834",
+    "reason": "SDK27 arm64e.x1 TAPI support and correct existing DWARF compact-unwind fallback without discarding exception personalities; pinned Chromium compiler and Rust remain unchanged."
+  }
+}
