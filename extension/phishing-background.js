@@ -18,6 +18,8 @@ function website(value) {
 }
 
 export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now, randomId = () => crypto.randomUUID(),
+  nativeHost = HOST, settingsPath = 'newtab.html', leaveURL = api.runtime.getURL('newtab.html'),
+  nativeUnavailableMessage = 'Local phishing model is unavailable. Relaunch Kumo after rebuilding.',
   readBuildInfo = async () => {
     const response = await fetch(api.runtime.getURL('build-info.json'));
     if (!response.ok) throw new Error('Packaged feature information is unavailable.');
@@ -29,7 +31,7 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
   const pending = new Map(), activeTabs = new Set(), generations = new Map(), results = new Map(), bypasses = new Map(), scanBudgets = new Map();
   const checkEpoch = expected => { if (expected !== epoch) throw new Error('Phishing settings changed.'); };
   const internal = sender => {
-    try { const url = new URL(sender.url); return sender.id === api.runtime.id && url.protocol === 'chrome-extension:' && url.host === api.runtime.id && url.pathname === '/newtab.html'; }
+    try { const url = new URL(sender.url); return sender.id === api.runtime.id && url.protocol === 'chrome-extension:' && url.host === api.runtime.id && url.pathname === `/${settingsPath}`; }
     catch { return false; }
   };
   const warningURL = token => api.runtime.getURL(`phishing-warning.html#${token}`);
@@ -46,15 +48,15 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
     return mutation;
   }
 
-  function disconnect() {
+  function disconnect(reason = 'Local phishing model is unavailable.') {
     const old = port; port = null;
-    for (const {reject, timer} of pending.values()) { clearTimeout(timer); reject(new Error('Local phishing model is unavailable.')); }
+    for (const {reject, timer} of pending.values()) { clearTimeout(timer); reject(new Error(reason)); }
     pending.clear();
     try { old?.disconnect(); } catch {}
   }
   function connect() {
     if (port) return port;
-    const source = api.runtime.connectNative(HOST); port = source;
+    const source = api.runtime.connectNative(nativeHost); port = source;
     source.onMessage.addListener(message => {
       if (source !== port) return;
       if (!message || typeof message.id !== 'string' || !pending.has(message.id)) return;
@@ -76,7 +78,7 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
       timer.unref?.();
       pending.set(id, {resolve, reject, timer});
       try { connect().postMessage(type === 'classify' ? {id, type, text} : {id, type}); }
-      catch { disconnect(); reject(new Error('Local phishing model is unavailable. Relaunch Kumo after rebuilding.')); }
+      catch { disconnect(nativeUnavailableMessage); reject(new Error(nativeUnavailableMessage)); }
     });
   }
   async function unregister() {
@@ -159,7 +161,7 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
       if (!await api.permissions.contains({origins: ORIGINS})) throw new Error('Allow website access to enable local phishing warnings.');
       checkEpoch(expected);
       const status = await nativeRequest('status'); checkEpoch(expected);
-      if (status.available !== true || typeof status.modelVersion !== 'string') throw new Error('Local phishing model is unavailable. Relaunch Kumo after rebuilding.');
+      if (status.available !== true || typeof status.modelVersion !== 'string') throw new Error(nativeUnavailableMessage);
       modelVersion = status.modelVersion;
       if (!await api.permissions.contains({origins: ORIGINS})) throw new Error('Website access was revoked.');
       checkEpoch(expected);
@@ -252,7 +254,7 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
     if (message.type === 'phishing.warning') return {ok: true, origin: entry.origin, coverageLimited: entry.coverageLimited};
     if (!enabled) throw new Error('This warning expired. Return to a new tab.');
     checkEpoch(expected);
-    const target = message.type === 'phishing.continue' ? entry.url : api.runtime.getURL('newtab.html');
+    const target = message.type === 'phishing.continue' ? entry.url : leaveURL;
     await mutateWarnings(current => { delete current[message.token]; return current; }, expected);
     checkEpoch(expected);
     const latest = await api.tabs.get(entry.tabId);

@@ -4,7 +4,9 @@ import KumoPhishingCore
 
 let arguments = CommandLine.arguments
 let diagnostic = arguments.count == 4 && ["--self-test", "--benchmark"].contains(arguments[1]) && arguments[2] == "--resources"
-guard diagnostic || HostProtocol.authorized(arguments: arguments) else { exit(64) }
+guard diagnostic || HostProtocol.authorized(arguments: arguments,
+    bundleIdentifier: Bundle.main.bundleIdentifier,
+    sealedOrigin: Bundle.main.object(forInfoDictionaryKey: "KumoPhishLangExtensionOrigin")) else { exit(64) }
 
 let resources: URL
 if diagnostic {

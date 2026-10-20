@@ -1,0 +1,89 @@
+{
+  "checkedAt": "2026-10-19T23:29:56.979202+00:00",
+  "status": "pass-local-signed-addon",
+  "sourceBaseCommit": "9349018fb584f54ff29be7d33f4edb9e7deb8b4c",
+  "platform": "macOS-arm64",
+  "minimumMacOS": "13.0",
+  "extensionId": "ejmohaggcahgfhmgkdiicnmmlpnhgfmi",
+  "nativeHost": "com.kumo.phishlang",
+  "builtInBrowserModelStillOmitted": true,
+  "tests": {
+    "javascript": 170,
+    "native": 27,
+    "nativeSkipped": 0,
+    "package": 9,
+    "independentArtifactChecks": 320,
+    "distributedFiles": 40,
+    "browserScenarioGroups": 7
+  },
+  "browserChecks": [
+    "Native installer registers the standalone extension and installs a stable independent extension folder",
+    "default off: no registered phishing script or native inference request",
+    "actual UI enable, registered top-frame content script, real Native Messaging/Core ML, benign fixture no warning, agent grants remain off",
+    "actual login warning excludes private field/editable/script/link/document-query sentinels from native payload; trusted warning displays only origin; Leave works",
+    "actual urgent-page warning, Continue works once for its returned document, same-URL reload warns again",
+    "actual Turn off unregisters scripts, retires existing instances and prevents further local inference",
+    "actual re-enable reinjects cleanly and flags an already-open synthetic page"
+  ],
+  "browser": {
+    "normalChromiumSandbox": true,
+    "profile": "disposable",
+    "accountAccess": false,
+    "externalPageRequests": [],
+    "cleanup": {
+      "temporaryRemoved": true,
+      "ownedRemaining": [],
+      "passed": true
+    }
+  },
+  "archive": {
+    "checkedAt": "2026-10-19T23:29:16.247963+00:00",
+    "status": "pass",
+    "archive": "dist/Kumo-PhishLang-0.1.0-macos-arm64.zip",
+    "bytes": 90996629,
+    "sha256": "80a091dc43136fe326e5d27cc6cb7c2f9bbe763f1cbaf15f8913cf1a70a3b2e5",
+    "extractedFiles": 40,
+    "allExtractedFileHashesMatch": true,
+    "strictDeveloperIDSignaturesSurviveArchive": true,
+    "notarized": false
+  },
+  "evidence": {
+    ".cache/qa/phishlang-addon-2026-10-19/javascript-tests.log": "02d5d2397f49a6123a40f08bf4feb23463c8a0846e02183fb42db27e9663d43b",
+    ".cache/qa/phishlang-addon-2026-10-19/native-tests.log": "6f3eac68562a85456ad11b32980bff09a9db66405e54494768a7cd81b69a377a",
+    ".cache/qa/phishlang-addon-2026-10-19/package-tests.log": "ca52134570cd26f2281b76fa7bc12f56a89a802fdd31301044eef3c5cea035f3",
+    ".cache/qa/phishlang-addon-2026-10-19/independent-artifact-review.json": "deb8419c5a9ab4b40ab550d9d0bd1f590552ae414ad3ef50acdd087273bd925d",
+    ".cache/qa/phishlang-addon-2026-10-19/browser/results.json": "6f6d66f8d30e8e0741fc4bbdfa40e25360b9f12a53dfd8cd5d27eb431eed219e",
+    ".cache/qa/phishlang-addon-2026-10-19/archive-verification.json": "c21e0c4618c224525ddf4e8a76c62c790f2bbb0a5b4e1b194e4e9cbbefa68138"
+  },
+  "sourceSHA256": {
+    "README.md": "8d6047a7654ea274a87d3cf9b31fd240ee124bfca2cf7c95413f594732743aeb",
+    "addons/phishlang/README.md": "2124553f8131c158ab73d14af12c45013d68dd059c0dae6d53ee4d71ea2bfe85",
+    "config/phishlang-extension-id.txt": "be794dbbf6090f462758807820e94b2b22492f962061ab7771517d52b46ea58c",
+    "extension/phishing-background.js": "00ba36ab87b9058b476340852ff035d9747435e8cbacff7c91fa8d9610d88537",
+    "native/phishing/Package.swift": "cf481f745060f2a96383a1cc0cc7ede441a957221468c7ad013e98a7b27f8d7f",
+    "native/phishing/Sources/KumoPhishingCore/Protocol.swift": "86c9012eb52f18f39ac03e81fc7d2bdac61aac26ee10ae92250eed13bccb4446",
+    "native/phishing/Sources/KumoPhishingHost/main.swift": "3218c60188b44465b548d0223fbb9bfaf28ba7ace346ea2f580ae9b224768b23",
+    "native/phishing/Sources/KumoPhishLangSetup/main.swift": "da002dc5ed52d9a374b35d7bf4f834dc04e22a6d3d69830e89274146dbd8a7a4",
+    "native/phishing/Sources/KumoPhishLangSetupSupport/Setup.swift": "2eb187e7608a0d62c34d5364a9b0108ca681e9e98cd0516784c744968d11eae5",
+    "scripts/package-phishlang-extension.py": "d37f42c271ee6d1f87b87be34ceabef054bb39a091b10b6efe686e16239b50d6",
+    "scripts/smoke-phishlang-extension.mjs": "9e130c1e7bb0b2f81fbd75ea8f3d71349ad415c7a72cff74888d1687805d23d5",
+    "scripts/test_phishlang_extension_package.py": "61789a5188f7a1840bac3d3a98f48627dbdaf7b45e6e0b136e7dc2c79fea4f75",
+    "tests/phishing-background.test.mjs": "b74e1ea33fb5ef6fe03e3db2f5fbb24a7288237a92fd0e02ac129bbf44442be2",
+    "tests/phishlang-addon.test.mjs": "f51f3ee92649c935eb4ab577361e643bbe624c73b3953d553b7e4c1bb36589b5",
+    "addons/phishlang/extension/background.js": "9113ab5ed55438103303ed35000295eadc167d7a59b0f61cdfdec3c47c83c4ff",
+    "addons/phishlang/extension/manifest.json": "0f4e15e7f9bd453978ab26e8c22b74611decba777a75da777f39051bcca05d0d",
+    "addons/phishlang/extension/phishing-warning.html": "f42197ea78e311a6463be06e561d60c3007b592a6bef3216e33eaeb8e2e64ee1",
+    "addons/phishlang/extension/phishing-warning.js": "ba8b0ae3cb635913b4dad8c91186be62151827ffdf29d718c094dcf9437cf860",
+    "addons/phishlang/extension/settings-state.js": "caccaaead49eb4d0ec86e7953afc419751badfe559918fb5f51e0b2801384bb4",
+    "addons/phishlang/extension/settings.html": "91b42795ab428b09a3341ddd9690b90934def897da4d2541e4c8567a4c732df0",
+    "addons/phishlang/extension/settings.js": "8c8c78c45164922adddad14022ec9a95e4385e7d345b750079dd673d614cd75c",
+    "addons/phishlang/extension/standalone.css": "fe8ffea1bb1f923863c9ecb31298c1d16527c7575ea6ebb240ba0513431fac37"
+  },
+  "limits": [
+    "Not yet notarized; signed local build, not a Chrome Web Store listing.",
+    "Synthetic fixtures establish integration, not production phishing accuracy or calibration.",
+    "Actual 8 GB hardware remains unqualified.",
+    "QA copied manifest pregrants website access; explicit request/denial/revocation logic is separately tested.",
+    "No public add-on binary uploaded, no default installation or personal browser profile changed."
+  ]
+}
