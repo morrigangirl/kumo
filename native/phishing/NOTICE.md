@@ -1,6 +1,6 @@
-# PhishLang model attribution and development provenance
+# PhishLang model attribution and provenance
 
-This local development build includes a Core ML conversion of the PhishLang
+Kumo includes a Core ML conversion of the PhishLang
 MobileBERT checkpoint from UTA-SPRLab/phishlang, commit
 `6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd`.
 
@@ -11,11 +11,12 @@ Repository: https://github.com/UTA-SPRLab/phishlang.
 
 The publication is licensed under Creative Commons Attribution 4.0:
 https://creativecommons.org/licenses/by/4.0/.
-The reviewed repository does not specify a separate license grant for its code,
-fine-tuned weights or processed training data. This notice records that scope
-uncertainty; it does not assign the paper license to those separate artifacts or
-relicense them under Kumo's MIT license. Commercial redistribution rights have
-not been established by this local port.
+On October 20, 2026, Kumo's project owner accepted the interpretation that the
+paper authors' published repository and fine-tuned checkpoint are covered by
+CC BY 4.0 and authorized distribution in Kumo with attribution and change notices.
+This is the project's accepted distribution basis. The reviewed upstream metadata
+does not specify a separate code/checkpoint license, and no additional confirmation
+from the authors was obtained. Kumo's MIT license does not relicense those artifacts.
 
 The underlying Google MobileBERT checkpoint declares Apache License 2.0:
 https://huggingface.co/google/mobilebert-uncased. The corresponding license text

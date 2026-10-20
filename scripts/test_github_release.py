@@ -148,14 +148,30 @@ class ReleasePolicy(unittest.TestCase):
                 release.prepare(Namespace(notary_profile=None), configuration())
             runner.assert_not_called()
 
-    def test_public_model_scope_enforces_only_explicit_included_development_flag(self):
-        for build in [{}, {"phishingProtection": {"included": False, "localDevelopmentOnly": True}},
-                      {"phishingProtection": {"included": True, "localDevelopmentOnly": False}},
-                      {"phishingProtection": {"included": True, "rightsStatus": "unverified"}}]:
-            with self.subTest(build=build):
-                release.validate_public_model_scope(build)
+    def test_public_model_scope_requires_explicit_pinned_owner_decision_for_included_models(self):
+        for build in [{}, {"phishingProtection": {"included": False, "localDevelopmentOnly": True}}]:
+            release.validate_public_model_scope(build)
+        for metadata in ({"included": True, "localDevelopmentOnly": False},
+                         {"included": True, "rightsStatus": "unverified"}):
+            with self.subTest(metadata=metadata), self.assertRaises(RuntimeError):
+                release.validate_public_model_scope({"phishingProtection": metadata})
         with self.assertRaisesRegex(RuntimeError, "localDevelopmentOnly=true"):
             release.validate_public_model_scope({"phishingProtection": {"included": True, "localDevelopmentOnly": True}})
+
+    def test_public_model_scope_accepts_exact_configured_decision_without_claiming_upstream_confirmation(self):
+        lock = json.loads((release.ROOT / "config/phishlang-model-lock.json").read_text())
+        weights = next(item["sha256"] for item in lock["upstream"]["artifacts"] if item["path"] == "src/model/model.safetensors")
+        info = {"sourceCommit": lock["upstream"]["commit"], "modelVersion": lock["upstream"]["commit"],
+                "upstreamSafetensorsSHA256": weights, "localDevelopmentOnly": True,
+                "rightsStatus": lock["rights"]["status"]}
+        metadata = {"included": True, "modelVersion": info["modelVersion"],
+                    **release._PHISHLANG_POLICY["model_metadata"](info, release.ROOT)}
+        release.validate_public_model_scope({"phishingProtection": metadata})
+        self.assertIs(metadata["modelLocalDevelopmentOnly"], True)
+        self.assertIs(metadata["distributionDecision"]["upstreamConfirmation"], False)
+        metadata["distributionDecision"]["sourceCommit"] = "0" * 40
+        with self.assertRaises(RuntimeError):
+            release.validate_public_model_scope({"phishingProtection": metadata})
 
     def test_development_only_model_prepare_stops_before_signing_tools_or_notarization(self):
         from argparse import Namespace

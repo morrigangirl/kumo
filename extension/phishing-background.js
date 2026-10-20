@@ -246,13 +246,13 @@ export function createPhishingProtection(api, {timeoutMs = 10000, now = Date.now
         typeof message.token !== 'string' || message.token.length > 80) throw new Error('Unsupported warning request.');
     const stored = (await api.storage.session.get(WARNINGS))[WARNINGS] || {};
     const entry = stored[message.token];
-    if (!entry || entry.tabId !== sender.tab.id || entry.expires <= now() || !website(entry.url)) throw new Error('This warning expired. Return to a new tab.');
+    if (!entry || entry.tabId !== sender.tab.id || entry.expires <= now() || !website(entry.url)) throw new Error('This warning expired. Leave this site.');
     const tab = await api.tabs.get(entry.tabId);
     if (tab.incognito || tab.pendingUrl || tab.url !== warningURL(message.token)) throw new Error('This warning is no longer current.');
     if (message.type === 'phishing.warning') return {ok: true, origin: entry.origin, coverageLimited: entry.coverageLimited};
-    if (!enabled) throw new Error('This warning expired. Return to a new tab.');
+    if (!enabled) throw new Error('This warning expired. Leave this site.');
     checkEpoch(expected);
-    const target = message.type === 'phishing.continue' ? entry.url : api.runtime.getURL('newtab.html');
+    const target = message.type === 'phishing.continue' ? entry.url : 'about:blank';
     await mutateWarnings(current => { delete current[message.token]; return current; }, expected);
     checkEpoch(expected);
     const latest = await api.tabs.get(entry.tabId);

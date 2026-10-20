@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPhishingProtection} from '../extension/phishing-background.js';
+import {installWarning} from '../extension/phishing-warning.js';
 
 class Event {
   listeners = [];
@@ -276,6 +277,17 @@ test('a warning cannot redirect a tab that navigated while continuation storage 
   assert.equal(h.updates.length, 1); assert.equal(h.tabs.get(1).url, 'https://unrelated.example/');
 });
 
+test('warning Leave consumes its ticket, exits to a blank page and grants no bypass', async t => {
+  const h = await harness(t); await h.enable(); const sender = h.addTab(); await h.scan(sender);
+  const url = h.tabs.get(1).url, token = new URL(url).hash.slice(1), warningSender = {...sender, url};
+  await h.message({type: 'phishing.leave', token}, warningSender);
+  assert.equal(h.tabs.get(1).url, 'about:blank');
+  assert.deepEqual(h.session.phishingWarnings, {});
+  await assert.rejects(h.message({type: 'phishing.continue', token}, warningSender), /expired/);
+  h.clock += 2000;
+  assert.equal((await h.scan(h.addTab())).status, 'warning');
+});
+
 test('invalid/nonfinite model output reports unavailable without a safe result or warning', async t => {
   const h = await harness(t, {probability: Infinity}); await h.enable();
   await assert.rejects(h.scan(h.addTab()), /unavailable/);
@@ -294,4 +306,56 @@ test('request concurrency and repeated-page work are bounded with explicit parti
   assert.equal((await h.scan(sender)).status, 'limited');
   for (let count = 0; count < 7; count++) { h.clock += 2000; assert.equal((await h.scan(sender)).status, 'no-signal'); }
   h.clock += 2000; assert.equal((await h.scan(sender)).status, 'limited');
+});
+
+function warningFixture({failure = null, continueFailure = false, gate = null} = {}) {
+  const elements = new Map(), messages = [], navigations = [];
+  const document = {getElementById(id) {
+    if (!elements.has(id)) elements.set(id, {textContent: '', disabled: false});
+    return elements.get(id);
+  }};
+  const location = {hash: '#warning-ticket', replace(value) { navigations.push(value); }};
+  const api = {runtime: {async sendMessage(message) {
+    messages.push(structuredClone(message));
+    if (gate && message.type === 'phishing.warning') await gate.promise;
+    if (failure || continueFailure && message.type === 'phishing.continue') return {error: 'Unavailable warning'};
+    return {ok: true, origin: 'https://example.test', coverageLimited: true};
+  }}};
+  return {warning: installWarning(api, document, location), messages, navigations, element: id => document.getElementById(id)};
+}
+
+test('warning UI uses ticket-bound Leave once and ignores a late initial result', async () => {
+  const gate = deferred(), h = warningFixture({gate});
+  await h.element('leaveSite').onclick();
+  gate.resolve(); await h.warning.ready;
+  await h.element('leaveSite').onclick(); await h.element('continueSite').onclick();
+  assert.deepEqual(h.messages, [{type: 'phishing.warning', token: 'warning-ticket'}, {type: 'phishing.leave', token: 'warning-ticket'}]);
+  assert.equal(h.element('continueSite').disabled, true);
+  assert.deepEqual(h.navigations, []);
+});
+
+test('expired warning UI cannot continue and Leave has a fixed blank-page fallback', async () => {
+  const h = warningFixture({failure: true}); await h.warning.ready;
+  await h.element('continueSite').onclick();
+  assert.equal(h.messages.length, 1);
+  assert.equal(h.element('continueSite').disabled, true);
+  await h.element('leaveSite').onclick();
+  assert.deepEqual(h.navigations, ['about:blank']);
+});
+
+test('failed warning continuation still allows the user to Leave', async () => {
+  const h = warningFixture({continueFailure: true}); await h.warning.ready;
+  await h.element('continueSite').onclick();
+  assert.equal(h.element('continueSite').disabled, true);
+  await h.element('leaveSite').onclick();
+  assert.deepEqual(h.messages.map(message => message.type), ['phishing.warning', 'phishing.continue', 'phishing.leave']);
+  assert.deepEqual(h.navigations, []);
+});
+
+test('warning UI displays only the origin and permits one continuation', async () => {
+  const h = warningFixture(); await h.warning.ready;
+  assert.equal(h.element('warningOrigin').textContent, 'https://example.test');
+  assert.match(h.element('warningCoverage').textContent, /Only part/);
+  await h.element('continueSite').onclick(); await h.element('continueSite').onclick();
+  assert.deepEqual(h.messages.map(message => message.type), ['phishing.warning', 'phishing.continue']);
 });

@@ -1,14 +1,14 @@
 # Local phishing warnings
 
-Kumo's development app includes a native macOS port of the pinned PhishLang
+Kumo 0.1.1 includes a native macOS port of the pinned PhishLang
 MobileBERT classifier. Enable it in **Kumo Settings → Privacy & security → Enable
 local warnings**, then allow website access. It starts off. Turning it off stops
 the native host, unregisters scanning and retires existing page scanners.
 
 This feature analyzes pages after they load. A high model score opens Kumo's own
-extension warning page, showing the site's origin with **Return to a new tab**
+extension warning page, showing the site's origin with **Leave this site**
 and **Continue anyway**. Continue authorizes only the returned document; a reload
-is analyzed again. A missing or failed model produces unavailable/partial status,
+is analyzed again. Leave opens a blank page. A missing or failed model produces unavailable/partial status,
 never a safe verdict. Low scores are recorded as **no signal**, not proof of safety.
 
 ## What runs on the Mac
@@ -81,13 +81,16 @@ their published accuracy does not establish this port's performance. Warnings
 remain experimental and off by default pending fresh, domain/time-separated
 legitimate/phishing evaluation.
 
-The authors' [publication](https://arxiv.org/abs/2408.05667) is CC BY 4.0. A license
-for the separate repository code/fine-tuned weights was not specified in the
-reviewed upstream metadata. This local development build records that unresolved
-scope; it does not assign the paper's license to those artifacts. The base Google
-MobileBERT model declares Apache-2.0. [Attribution and changes](../native/phishing/NOTICE.md)
-and the upstream license text are bundled with the model. Public/commercial
-redistribution clearance remains separate from this local port.
+The authors' [publication](https://arxiv.org/abs/2408.05667) is CC BY 4.0. On
+October 20, 2026, the project owner accepted the interpretation that the authors'
+published PhishLang repository and checkpoint are covered by that license and
+authorized their inclusion in Kumo's public browser update. The distribution
+decision is recorded in [the distribution policy](../config/phishlang-distribution.json)
+separately from the unchanged upstream/conversion evidence;
+no additional confirmation from the authors was obtained. Production packaging
+checks that the decision covers the exact pinned checkpoint. The base Google
+MobileBERT model declares Apache-2.0. [Attribution and changes](../native/phishing/NOTICE.md),
+license links and the MobileBERT license text are bundled with the model.
 
 ## Build and checks
 

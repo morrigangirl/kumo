@@ -8,6 +8,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -216,6 +217,93 @@ class PhishingResources(unittest.TestCase):
 
         with patch.object(Path, "stat", synthetic_size):
             self.invalid()
+
+    def copied_attribution(self):
+        original = Path(__file__).resolve().parents[1] / "native/phishing"
+        source = self.root / "native/phishing"
+        source.mkdir(parents=True)
+        for name in ("NOTICE.md", "LICENSE-MobileBERT.txt"):
+            data = (original / name).read_bytes()
+            (source / name).write_bytes(data)
+            (self.resources / name).write_bytes(data)
+        return source
+
+    def test_copied_model_and_current_attribution_are_rechecked(self):
+        source = self.copied_attribution()
+        notice_sha = PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+        self.assertEqual(notice_sha, sha((source / "NOTICE.md").read_bytes()))
+        self.assertEqual(json.loads((self.resources / "model-info.json").read_text())["localDevelopmentOnly"], True)
+
+    def test_model_or_vocab_changed_after_source_verification_is_rejected(self):
+        self.copied_attribution()
+        for relative in ("PhishLang.mlmodelc/weights/weight.bin", "vocab.txt"):
+            with self.subTest(relative=relative):
+                path = self.resources / relative
+                original = path.read_bytes()
+                path.write_bytes(original + b"changed after source verification")
+                with self.assertRaisesRegex(RuntimeError, "Packaged PhishLang"):
+                    PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+                path.write_bytes(original)
+
+    def test_copied_metadata_changes_and_boolean_integer_coercion_are_rejected(self):
+        self.copied_attribution()
+        for key, value in (("sourceCommit", "2" * 40), ("localDevelopmentOnly", 1)):
+            with self.subTest(key=key):
+                changed = {**self.info, key: value}
+                write_json(self.resources / "model-info.json", changed)
+                with self.assertRaises(RuntimeError):
+                    PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+        self.write_info()
+
+    def test_stale_attribution_from_prepared_resources_cannot_replace_current_notice(self):
+        source = self.copied_attribution()
+        old = (self.resources / "NOTICE.md").read_bytes()
+        (source / "NOTICE.md").write_bytes(old + b"\nCurrent owner-approved distribution decision.\n")
+        with self.assertRaises(RuntimeError):
+            PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+        (self.resources / "NOTICE.md").write_bytes((source / "NOTICE.md").read_bytes())
+        PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+
+    def test_required_paper_authors_license_and_change_notice_cannot_be_omitted(self):
+        source = self.copied_attribution()
+        original = (source / "NOTICE.md").read_text()
+        for text in ("Sayak Saha Roy", "Shirin Nilizadeh", "https://arxiv.org/abs/2408.05667",
+                     "https://creativecommons.org/licenses/by/4.0/", "Kumo changes the runtime"):
+            with self.subTest(missing=text):
+                changed = original.replace(text, "omitted")
+                (source / "NOTICE.md").write_text(changed)
+                (self.resources / "NOTICE.md").write_text(changed)
+                with self.assertRaisesRegex(RuntimeError, "required attribution"):
+                    PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+        (source / "NOTICE.md").write_text(original)
+        (self.resources / "NOTICE.md").write_text(original)
+
+    def test_copied_model_aliases_and_hardlinks_are_rejected(self):
+        self.copied_attribution()
+        graph = self.model / "model.mil"
+        outside = self.root / "same-model.mil"
+        graph.rename(outside)
+        for kind in ("symbolic", "hard"):
+            with self.subTest(kind=kind):
+                if kind == "symbolic": graph.symlink_to(outside)
+                else: os.link(outside, graph)
+                with self.assertRaises(RuntimeError):
+                    PACKAGE.verify_packaged_phishing_resources(self.resources, self.info)
+                graph.unlink()
+        outside.rename(graph)
+
+    def test_native_helper_or_model_build_paths_cannot_escape_packaging(self):
+        self.copied_attribution()
+        helper = self.root / "KumoPhishingHost"
+        helper.write_bytes(b"stripped synthetic executable")
+        PACKAGE.verify_phishing_portability(helper, self.resources)
+        helper.write_bytes(str(self.root).encode())
+        with self.assertRaisesRegex(RuntimeError, "build-machine path"):
+            PACKAGE.verify_phishing_portability(helper, self.resources)
+        helper.write_bytes(b"stripped synthetic executable")
+        (self.resources / "model-info.json").write_text(str(Path.home()))
+        with self.assertRaisesRegex(RuntimeError, "build-machine path"):
+            PACKAGE.verify_phishing_portability(helper, self.resources)
 
 
 class PhishingStartupProbe(unittest.TestCase):

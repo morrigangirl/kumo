@@ -40,6 +40,7 @@ class OptionalModelAssembly(unittest.TestCase):
         self.phishing_info = {
             "modelVersion": "1" * 40, "modelDirectorySHA256": "2" * 64,
             "vocabSHA256": "3" * 64, "localDevelopmentOnly": True,
+            "sourceCommit": "1" * 40, "upstreamSafetensorsSHA256": "4" * 64,
             "rightsStatus": "unspecified-code-and-weights",
         }
         self.malware_info = {"version": "test-list", "domainCount": 3, "sourceCommit": "4" * 40,
@@ -66,6 +67,7 @@ class OptionalModelAssembly(unittest.TestCase):
             "release_configuration": Mock(return_value=self.release), "run": Mock(side_effect=self.external_tool),
             "signature_policy": Mock(return_value=0x10000), "resign_nested_code": Mock(),
             "verify_engine_start": Mock(), "verify_phishing_start": Mock(), "verify_malware_start": Mock(),
+            "verify_packaged_phishing_resources": Mock(return_value="5" * 64),
             "extension_id": Mock(return_value="a" * 32),
         }
         self.mocks = replacements

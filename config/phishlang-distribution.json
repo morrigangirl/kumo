@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "status": "owner-accepted-project-interpretation",
+  "acceptedOn": "2026-10-20",
+  "scope": "kumo-browser-public-distribution",
+  "interpretedLicense": "CC-BY-4.0",
+  "basisURL": "https://arxiv.org/abs/2408.05667",
+  "upstreamConfirmation": false,
+  "sourceRepository": "https://github.com/UTA-SPRLab/phishlang",
+  "sourceCommit": "6b7283854ef8a6edc73f945c1ce7e51b2e1dc4fd",
+  "upstreamSafetensorsSHA256": "235f0f52b32575c46ddd5584ef382a7969c96d012ed9a903722da8cb7593d009",
+  "attributionRequired": true,
+  "paperURL": "https://arxiv.org/abs/2408.05667"
+}

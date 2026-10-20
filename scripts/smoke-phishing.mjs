@@ -156,7 +156,8 @@ try {
   assert(privacyReply?.probability >= 0.9, 'Actual model probability must meet the production threshold');
   await target.screenshot({path: path.join(artifacts, 'actual-warning.png')});
   await target.locator('#leaveSite').click();
-  await eventually(() => target.url() === `chrome-extension://${eid}/newtab.html`, 'Actual leave button must return to Kumo');
+  await eventually(() => target.url() === 'about:blank', 'Actual leave button must exit to a blank page');
+  assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.session.get('phishingWarnings')).phishingWarnings), {}, 'Leave must consume the warning ticket');
   checks.push('actual login warning excludes private field/editable/script/link/document-query sentinels from native payload; trusted warning displays only origin; Leave works');
 
   const suspiciousURL = `${origin}/suspicious`;

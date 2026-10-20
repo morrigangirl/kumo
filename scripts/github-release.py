@@ -24,6 +24,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+_PHISHLANG_POLICY = runpy.run_path(str(ROOT / "scripts/phishlang-policy.py"))
 REPOSITORY = "morrigangirl/kumo"
 FEED_URL = f"https://github.com/{REPOSITORY}/releases/latest/download/appcast.xml"
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
@@ -121,14 +122,8 @@ def check_monotonic(config, releases):
 
 
 def validate_public_model_scope(build):
-    """Enforce an explicit development-only bundle flag, without inferring rights."""
-    if not isinstance(build, dict):
-        raise RuntimeError("App build metadata must be a dictionary.")
-    phishing = build.get("phishingProtection")
-    if (isinstance(phishing, dict) and phishing.get("included") is True
-            and phishing.get("localDevelopmentOnly") is True):
-        raise RuntimeError("Bundled PhishLang metadata declares localDevelopmentOnly=true; "
-                           "a public production release cannot include this development-only model.")
+    """Require explicit project authorization without rewriting upstream facts."""
+    _PHISHLANG_POLICY["validate_public_model_scope"](build, ROOT)
 
 
 def app_metadata(app, config, production=False):

@@ -25,6 +25,7 @@ import tempfile
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+_PHISHLANG_POLICY = runpy.run_path(str(ROOT / "scripts/phishlang-policy.py"))
 VERSION = "155.0.8059.39-1.1"
 SHA256 = "1a71ee2aa987f471e5ba61e853a0d9aa4b634fa68213ad24df2e970b7729385b"
 DOWNLOAD = f"https://github.com/ungoogled-software/ungoogled-chromium-macos/releases/download/{VERSION}/ungoogled-chromium_{VERSION}_arm64-macos.dmg"
@@ -219,6 +220,59 @@ def verified_phishing_resources(directory=None):
     except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
         raise RuntimeError("PhishLang resources are missing or invalid. Run /usr/bin/python3 scripts/prepare-phishlang.py before packaging.") from error
 
+
+def verify_packaged_phishing_resources(directory, expected):
+    """Recheck copied bytes and required attribution before signing the helper."""
+    try:
+        directory = Path(directory)
+        for name in ("model-info.json", "vocab.txt", "NOTICE.md", "LICENSE-MobileBERT.txt"):
+            item = directory / name
+            if item.is_symlink() or not item.is_file() or item.stat().st_nlink != 1:
+                raise ValueError("Model resources must be regular unlinked files")
+        actual_info = json.loads((directory / "model-info.json").read_text())
+        if (json.dumps(actual_info, sort_keys=True, separators=(",", ":")) != json.dumps(expected, sort_keys=True, separators=(",", ":")) or
+                digest(directory / "vocab.txt") != expected["vocabSHA256"]):
+            raise ValueError("Copied model metadata or vocabulary changed")
+        model = directory / "PhishLang.mlmodelc"
+        if model.is_symlink() or not model.is_dir():
+            raise ValueError("Copied compiled model is missing")
+        manifest = []
+        for item in sorted(model.rglob("*")):
+            state = item.lstat()
+            if stat.S_ISDIR(state.st_mode):
+                continue
+            if not stat.S_ISREG(state.st_mode) or state.st_nlink != 1:
+                raise ValueError("Copied model aliases are not accepted")
+            manifest.append({"path": item.relative_to(model).as_posix(), "bytes": state.st_size, "sha256": digest(item)})
+        encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        if (manifest != expected["modelFiles"] or sum(item["bytes"] for item in manifest) > 150_000_000 or
+                hashlib.sha256(encoded).hexdigest() != expected["modelDirectorySHA256"]):
+            raise ValueError("Copied model hashes differ from verified resources")
+        for name in ("NOTICE.md", "LICENSE-MobileBERT.txt"):
+            if digest(directory / name) != digest(ROOT / "native/phishing" / name):
+                raise ValueError("Copied model attribution differs from current source")
+        notice = " ".join((directory / "NOTICE.md").read_text().replace("*", "").split())
+        required = ("Sayak Saha Roy", "Shirin Nilizadeh",
+                    "PhishLang: A Real-Time, Fully Client-Side Phishing Detection Framework Using MobileBERT",
+                    "https://arxiv.org/abs/2408.05667", "https://github.com/UTA-SPRLab/phishlang",
+                    "https://creativecommons.org/licenses/by/4.0/", "Kumo changes the runtime")
+        if any(value not in notice for value in required):
+            raise ValueError("Required paper citation, license link or modification notice is absent")
+        return digest(directory / "NOTICE.md")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise RuntimeError("Packaged PhishLang resources or required attribution differ from verified source inputs.") from error
+
+
+def verify_phishing_portability(helper, resources):
+    """Keep local debug/build paths out of the model/helper deliverable."""
+    forbidden = [str(ROOT).encode(), str(Path.home()).encode()]
+    items = [Path(helper), *(item for item in Path(resources).rglob("*") if item.is_file())]
+    for item in items:
+        data = item.read_bytes()
+        if any(prefix in data for prefix in forbidden):
+            raise RuntimeError("PhishLang packaged resource retains a build-machine path: " + item.name)
+
+
 def verified_malware_resources(directory=None):
     """Validate the pinned, licensed threat-list snapshot before signing."""
     directory = Path(directory) if directory else ROOT / "build/malware-feed"
@@ -282,6 +336,7 @@ def assemble(engine, destination, local_source, installed_destination, include_p
             engine, ROOT, receipt_api["current_input_digest"](ROOT))
     identity, signing_team = development_identity()
     phishing_info = verified_phishing_resources() if include_phishing else None
+    phishing_policy = _PHISHLANG_POLICY["model_metadata"](phishing_info, ROOT) if include_phishing else None
     malware_info = verified_malware_resources()
     release = release_configuration()
     run(sys.executable, ROOT / "scripts/prepare-sparkle.py", "--verify")
@@ -336,8 +391,11 @@ def assemble(engine, destination, local_source, installed_destination, include_p
             shutil.copyfile(prepared / name, phishing_resources / name)
         for name in ("NOTICE.md", "LICENSE-MobileBERT.txt"):
             shutil.copyfile(ROOT / "native/phishing" / name, phishing_resources / name)
+        phishing_notice_sha256 = verify_packaged_phishing_resources(phishing_resources, phishing_info)
         phishing_host = phishing_contents / "MacOS/KumoPhishingHost"
         shutil.copy2(ROOT / "build/phishing-native/KumoPhishingHost", phishing_host)
+        run("/usr/bin/strip", "-S", phishing_host)
+        verify_phishing_portability(phishing_host, phishing_resources)
         (resources / "phishing-host-template.json").write_text(json.dumps({
             "name": "com.kumo.phishing", "description": "Kumo local PhishLang classifier",
             "type": "stdio", "allowed_origins": [f"chrome-extension://{extension_id()}/"],
@@ -421,8 +479,8 @@ def assemble(engine, destination, local_source, installed_destination, include_p
             "modelDirectorySHA256": phishing_info["modelDirectorySHA256"],
             "vocabSHA256": phishing_info["vocabSHA256"], "computeUnits": "cpuOnly",
             "experimental": True, "enabledByDefault": False,
-            "localDevelopmentOnly": phishing_info.get("localDevelopmentOnly") is True,
-            "rightsStatus": phishing_info.get("rightsStatus", "unverified"),
+            "attributionNoticeSHA256": phishing_notice_sha256,
+            **phishing_policy,
         }
     else:
         build_info["phishingProtection"] = {
