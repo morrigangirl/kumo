@@ -38,15 +38,7 @@ JSON report includes the exact team, identity candidates, ordered code items,
 entitlement keys, signing flags, and blockers. Dry run also shows the commands
 with temporary-path placeholders. It never creates a release staging copy.
 
-The build Mac now has a valid **Developer ID Application** identity for Carson
-Press LLC (`PV65ZWXCWX`), as confirmed by `scripts/check-signing.py`. The
-current source app remains development-signed until the separate production
-step runs. No approved Kumo browser-passkey profile is installed. A
-`notarytool` Keychain profile is configured and authenticated; successful app
-notarization and stapling still need the production step. The optional managed
-passkey capability is not required to publish the ordinary browser release.
-The Apple Developer portal, certificates, and profiles are never changed by
-these tools.
+The build Mac has a valid **Developer ID Application** identity for Carson Press LLC (`PV65ZWXCWX`) and a configured `notarytool` Keychain profile. Kumo 0.1.0, build 202610190001, completed production signing, Apple notarization, stapling and Gatekeeper verification and was published on October 20, 2026. See the [release validation](security-audits/2026-10-20/production-release.md). No approved Kumo browser-passkey profile is installed; that optional managed capability is separate from the ordinary browser release. The Apple Developer portal, certificates and profiles are never changed by these tools.
 
 The first public binary excludes the experimental PhishLang checkpoint and
 helper while retaining domain blocking and ClamAV scanning. Package with

@@ -22,13 +22,7 @@ signing key already exists in the build Mac's login Keychain under
 [`config/release.json`](../config/release.json). The release tools do not export
 private keys or accept private keys as command arguments.
 
-This update channel is implemented but has not been published. The Carson Press
-LLC **Developer ID Application** identity is now installed on the build Mac,
-and the notarization Keychain profile has been configured and authenticated.
-Successful notarization and stapling are still required before the production
-app can be published with updates enabled. Apple
-Development signing remains a local development build. See [production
-signing](signing.md) for those checks.
+The update channel is live with [Kumo 0.1.0, build 202610190001](https://github.com/morrigangirl/kumo/releases/tag/v0.1.0-202610190001), published on October 20, 2026. Apple accepted the Carson Press LLC Developer ID-signed app; its stapled ticket, Gatekeeper assessment and all nested signatures passed verification. The public appcast was fetched anonymously and its Sparkle signature verified. Production builds have update checks enabled; Apple Development builds remain disabled. See [production release validation](security-audits/2026-10-20/production-release.md) and [production signing](signing.md).
 
 The first public binary excludes the experimental PhishLang checkpoint and its
 native inference helper. Local dangerous-domain blocking and ClamAV download

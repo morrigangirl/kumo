@@ -1,0 +1,123 @@
+{
+  "checkedAt": "2026-10-20T17:24:57.511114+00:00",
+  "status": "published-notarized-installed",
+  "version": "0.1.0",
+  "build": "202610190001",
+  "tag": "v0.1.0-202610190001",
+  "sourceCommit": "9349018fb584f54ff29be7d33f4edb9e7deb8b4c",
+  "releaseURL": "https://github.com/morrigangirl/kumo/releases/tag/v0.1.0-202610190001",
+  "publishedAt": "2026-10-20T17:20:49Z",
+  "archive": {
+    "name": "Kumo-0.1.0-202610190001-macos-arm64.zip",
+    "url": "https://github.com/morrigangirl/kumo/releases/download/v0.1.0-202610190001/Kumo-0.1.0-202610190001-macos-arm64.zip",
+    "length": 169940338,
+    "sha256": "9688a7e82c560f7d872877ae0d1d338101dafd91291d1f2d68aceb0aa84a8bbc",
+    "edSignature": "TWrTKnLLJTupj6adGU96AWp0x8qa7BOALK/Kj7BUTNHknIvJUaxkr+8MpSqNlBtA8naDI4Zuiu5j4ZNTwd/TBg=="
+  },
+  "notarization": {
+    "submissionId": "d3ee0a6a-95a8-4586-aee2-c107e884ab5b",
+    "submittedAt": "2026-10-19T22:45:20.775Z",
+    "verifiedAcceptedAt": "2026-10-20T17:14:43.788873+00:00",
+    "status": "Accepted",
+    "stapledTicketValidated": true,
+    "gatekeeperSource": "Notarized Developer ID"
+  },
+  "code": {
+    "teamId": "PV65ZWXCWX",
+    "codeDirectoryHash": "3fc6da2962448a8e2c0fe52e6b8f567ecae803a5",
+    "nativeItemsVerified": 25,
+    "everyNativeItemStrictAllArchitecturesDeveloperIDAndTimestampVerified": true,
+    "sourceInputDigest": "92acde368a82bc38610f1e310f97a769658d901aa53f0988db3a0b38b568814c",
+    "sourceReceiptSHA256": "614a7344c6f87f7ae037e04b85e7b040ab916f1fe87d87017ea3c37b30482f81",
+    "packagedSourceCodeAndDataIdentity": {
+      "engine": {
+        "codeAndDataSectionsMatch": true,
+        "sectionCount": 11,
+        "sectionsSHA256": "aa1b7c2c5cacf62baf26b79373442b119e15495a4fc194d33b0f84f00e51417b"
+      },
+      "framework": {
+        "codeAndDataSectionsMatch": true,
+        "sectionCount": 39,
+        "sectionsSHA256": "abe28370a3c2f22b26364943e47f2d3c2b0662c77dae1243fcc80db0d24ead93"
+      }
+    }
+  },
+  "runtimeIdentity": {
+    "previouslyTestedFiles": 625,
+    "finalFiles": 626,
+    "changed": [],
+    "added": [
+      "Contents/CodeResources"
+    ],
+    "onlyAddedStapledTicket": true,
+    "priorEvidence": ".cache/qa/production-release-2026-10-19/production-runtime-summary.json"
+  },
+  "publicDelivery": {
+    "fiveAssetsVerifiedBeforePublication": true,
+    "latestPublicReleaseVerified": true,
+    "anonymousArchiveHEAD": {
+      "checkedAt": "2026-10-20T17:24:28.959589+00:00",
+      "status": "pass",
+      "url": "https://github.com/morrigangirl/kumo/releases/download/v0.1.0-202610190001/Kumo-0.1.0-202610190001-macos-arm64.zip",
+      "anonymousNoCookiesOrAuthorization": true,
+      "httpStatus": 200,
+      "contentLength": 169940338,
+      "finalHost": "release-assets.githubusercontent.com"
+    },
+    "anonymousSignedFeed": {
+      "checkedAt": "2026-10-20T17:21:38.415455+00:00",
+      "status": "pass",
+      "feedURL": "https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml",
+      "anonymousNoCookiesOrAuthorization": true,
+      "httpStatus": 200,
+      "finalHost": "release-assets.githubusercontent.com",
+      "bytes": 2031,
+      "sha256": "0bb0f0543dce0a59fada2276a76e47b3fe884a18bf2583b43040d3bc8aa49ee3",
+      "exactPreparedFeedBytes": true,
+      "officialSparkleSignatureValid": true
+    }
+  },
+  "installed": {
+    "path": "dist/Kumo.app",
+    "backup": "dist/backups/Kumo-development-20261020T172230Z-9c7684c8.app",
+    "filesMatchArchive": true,
+    "allProfilesClosed": true,
+    "browserLaunched": false,
+    "profileDataChanged": false,
+    "launchServicesRegisteredPathVerified": true,
+    "updaterStatus": {
+      "available": true,
+      "build": "202610190001",
+      "feedURL": "https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml",
+      "provider": "github-releases",
+      "reason": "ready",
+      "repository": "morrigangirl/kumo",
+      "requiresAllProfilesClosed": true,
+      "requiresUserInstallation": true,
+      "schemaVersion": 1,
+      "sparkleVersion": "2.10.0",
+      "version": "0.1.0"
+    }
+  },
+  "experimentalModelIncluded": false,
+  "knownDangerousDomainsAndClamAVIncluded": true,
+  "evidenceSHA256": {
+    ".cache/qa/production-release-2026-10-20/artifact-review/artifact-review.json": "fbd7863d99d396be76c66034cb23b14a54f5cd19b0edf52aec45cb642bb2960a",
+    ".cache/qa/production-release-2026-10-20/artifact-review/all-native-item-signatures.json": "9dc884f6619b193b69d5fdd9d2edd11dc6c8546bb96c16d414b3a344e5d722df",
+    ".cache/qa/production-release-2026-10-20/artifact-review/gatekeeper.log": "c34f59282e2b703ea0e83556f1d06649f5d31b05222df405fbcf50bd2e6b8ac1",
+    ".cache/qa/production-release-2026-10-20/artifact-review/stapler.log": "a4e54617242865b6fe795a9892534c65760eaeb24c8e5bda84b8d2a9242746b7",
+    ".cache/qa/production-release-2026-10-20/runtime-artifact-comparison.json": "52a1788c82028fd5b2c3acef3cd8910b9c8c0fbd83493cfc2c5f5f8adb5269e9",
+    ".cache/qa/production-release-2026-10-20/public-release.json": "685749c96ab0cddb271195b41b187947dd5a325c270820c64ad73bffd657c297",
+    ".cache/qa/production-release-2026-10-20/public-feed-verification.json": "3faa5d1860f978f94183b23588af219e7866bfe2c42d958b7137469703652470",
+    ".cache/qa/production-release-2026-10-20/public-download-verification.json": "3aeb421d8be5599ecf057519dbd19c24df528b4acabc237d19e6f71dab1eddb9",
+    ".cache/qa/production-release-2026-10-20/local-installation.json": "4481b4c4463c9f9b91137dc0cdb1c4e2e37836a4db6741b4a8e3b3db45a24ed1",
+    ".cache/qa/production-release-2026-10-20/installed-updater-status.json": "e57ccb085b9e55cfd5dd71842acb5ace1a07cbbd2b17cc3b22df2dae4f6b8d48",
+    ".cache/qa/production-release-2026-10-20/launchservices-registration.json": "166251d6fe64c84966c6d037cec96a2903a5f890a53720ca30e1f231bff02ab2",
+    ".cache/qa/production-release-2026-10-20/publish.log": "42098e0347e482161cc1f6a78e16b6aeab4c6f8e688afd1c0f123d86e3dd7eb9"
+  },
+  "limits": [
+    "The first release has no later production build to exercise a full Sparkle replacement cycle. Runtime policy, locking, signatures, feed and archive checks were verified; future replacement remains a separate test.",
+    "Apple managed browser-passkey provisioning remains absent.",
+    "Notarization and these tests are not a guarantee of vulnerability-free operation or Chrome feature/security parity."
+  ]
+}
