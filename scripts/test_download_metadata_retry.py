@@ -21,6 +21,7 @@ STRICT_SAMEFILE_SHA256 = "1dd11060878062bf39ffb488f4fa004e820819fc6913863ab8038a
 FIXTURE = r'''
 #include <sys/stat.h>
 #include <sys/xattr.h>
+#include <CommonCrypto/CommonDigest.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cassert>
@@ -33,6 +34,17 @@ FIXTURE = r'''
 // PRODUCTION_POLICY
 
 using D = ScanAttemptDisposition;
+std::string FixtureSHA256(const std::string& bytes) {
+  unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+  assert(CC_SHA256(bytes.data(), static_cast<CC_LONG>(bytes.size()), digest));
+  const char hex[] = "0123456789abcdef";
+  std::string result;
+  for (unsigned char byte : digest) {
+    result.push_back(hex[byte >> 4]);
+    result.push_back(hex[byte & 15]);
+  }
+  return result;
+}
 struct OwnedFile {
   char path[64] = "/private/tmp/kumo-metadata-retry-XXXXXX";
   int fd = -1;
@@ -97,6 +109,7 @@ struct RunOptions {
   bool cancel_retry = false;
   bool expire_retry = false;
   bool change_content = false;
+  bool change_content_after_first_posthash = false;
   bool browser_hash_mismatch = false;
   std::string second_verdict = "no-known-malware";
 };
@@ -105,6 +118,7 @@ struct RunResult { D disposition; int attempts; int snapshots; int helpers; };
 RunResult RunOwnedSequence(const RunOptions& options) {
   OwnedFile file;
   std::optional<struct stat> baseline;
+  std::string first_snapshot_sha;
   int attempts = 0, snapshots = 0, helpers = 0;
   const auto disposition = RunBoundedMetadataScan([&](bool retry) {
     ++attempts;
@@ -119,6 +133,11 @@ RunResult RunOwnedSequence(const RunOptions& options) {
       return D::kReject;
     const std::string snapshot = file.snapshot();
     ++snapshots;
+    const std::string snapshot_sha = FixtureSHA256(snapshot);
+    if (!SnapshotHashMatches(snapshot_sha, "", first_snapshot_sha))
+      return D::kReject;
+    if (first_snapshot_sha.empty())
+      first_snapshot_sha = snapshot_sha;
     if (retry && options.change_before_helper)
       file.metadata_change();
     if (!AtMetadataRetryBaseline(before, file.state(), file.named()))
@@ -128,10 +147,16 @@ RunResult RunOwnedSequence(const RunOptions& options) {
       file.metadata_change();
     if (options.change_content)
       file.content_change();
+    const std::string posthash = FixtureSHA256(file.snapshot());
+    if (!retry && options.change_content_after_first_posthash) {
+      assert(posthash == snapshot_sha);
+      file.content_change();  // Exact race: after hash A, before poststat B.
+      assert(SameMetadataExceptChangeTime(before, file.state()));
+    }
     const auto after = file.state();
     const auto result = ClassifyScanAttempt(
         retry ? options.second_verdict : "no-known-malware",
-        snapshot == file.snapshot() && !options.browser_hash_mismatch,
+        snapshot_sha == posthash && !options.browser_hash_mismatch,
         true, before, after, file.named());
     if (result == D::kRetryMetadata)
       baseline = after;
@@ -147,6 +172,11 @@ int main(int argc, char** argv) {
     const auto result = RunOwnedSequence({});
     assert(result.disposition == D::kClean);
     assert(result.attempts == 2 && result.snapshots == 2 && result.helpers == 2);
+  } else if (scenario == "posthash_before_poststat_content_change_without_browser_hash_fails") {
+    RunOptions options; options.change_content_after_first_posthash = true;
+    const auto result = RunOwnedSequence(options);
+    assert(result.disposition == D::kReject);
+    assert(result.attempts == 2 && result.snapshots == 2 && result.helpers == 1);
   } else if (scenario == "second_metadata_update_fails") {
     RunOptions options; options.repeat_metadata = true;
     const auto result = RunOwnedSequence(options);
@@ -262,6 +292,7 @@ class MetadataRetryTests(unittest.TestCase):
                              check=True, capture_output=True, text=True).stdout.strip()
         scenarios = [
             "single_metadata_update_rescans", "second_metadata_update_fails",
+            "posthash_before_poststat_content_change_without_browser_hash_fails",
             "baseline_drift_before_snapshot_fails", "baseline_drift_before_helper_fails",
             "cancel_or_deadline_stops_retry", "same_size_restored_mtime_content_or_browser_hash_never_retries",
             "second_nonclean_result_cannot_release", "first_nonclean_result_never_retries",

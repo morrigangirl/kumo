@@ -126,6 +126,14 @@ bool AtMetadataRetryBaseline(const struct stat& baseline,
 
 enum class ScanAttemptDisposition { kReject, kClean, kInfected, kRetryMetadata };
 
+bool SnapshotHashMatches(const std::string& actual,
+                         const std::string& browser_hash,
+                         const std::string& first_snapshot_sha) {
+  return actual.size() == 64 &&
+         (browser_hash.empty() || actual == browser_hash) &&
+         (first_snapshot_sha.empty() || actual == first_snapshot_sha);
+}
+
 ScanAttemptDisposition ClassifyScanAttempt(
     const std::string& verdict,
     bool exact_content,
@@ -446,6 +454,7 @@ ScanResult ScanFile(ScanInput input, std::shared_ptr<ScanControl> control) {
   if (!descriptor.is_valid())
     return result;
   std::optional<struct stat> retry_baseline;
+  std::string first_snapshot_sha;  // Bound once, including without a browser hash.
   const auto disposition = RunBoundedMetadataScan([&](bool retry) {
     struct stat before;
     struct stat named;
@@ -460,10 +469,12 @@ ScanResult ScanFile(ScanInput input, std::shared_ptr<ScanControl> control) {
     }
     std::optional<PrivateSnapshot> snapshot =
         MakePrivateSnapshot(descriptor.get(), input, *control);
-    if (!snapshot || (!input.browser_hash.empty() &&
-                      snapshot->sha256 != input.browser_hash)) {
+    if (!snapshot || !SnapshotHashMatches(snapshot->sha256, input.browser_hash,
+                                         first_snapshot_sha)) {
       return ScanAttemptDisposition::kReject;
     }
+    if (first_snapshot_sha.empty())
+      first_snapshot_sha = snapshot->sha256;
     result.sha256 = snapshot->sha256;
     std::optional<base::FilePath> executable = VerifiedHelperPath();
     struct stat before_helper;
