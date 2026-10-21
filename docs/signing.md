@@ -40,6 +40,8 @@ with temporary-path placeholders. It never creates a release staging copy.
 
 The build Mac has a valid **Developer ID Application** identity for Carson Press LLC (`PV65ZWXCWX`) and a configured `notarytool` Keychain profile. Kumo 0.1.0, build 202610190001, completed production signing, Apple notarization, stapling and Gatekeeper verification and was published on October 20, 2026. See the [release validation](security-audits/2026-10-20/production-release.md). No approved Kumo browser-passkey profile is installed; that optional managed capability is separate from the ordinary browser release. The Apple Developer portal, certificates and profiles are never changed by these tools.
 
+The pending 0.1.2/build 202610210003 removes Kumo's built-in Apple Passwords integration. The unpublished build 202610210002 is superseded; its Apple acceptance cannot authorize a changed executable. The replacement needs a new completed source receipt, validation, signing and notarization before publication. Generic Chromium WebAuthn and the optional managed-entitlement signing workflow below remain; removed SDK probes and password sheets are not release capabilities. Widevine is not included.
+
 The first public binary excludes PhishLang. Kumo 0.1.1 includes the experimental
 model and helper while retaining domain blocking and ClamAV scanning. The signer
 requires a matching, checkpoint-bound project distribution decision and bundled
@@ -160,13 +162,17 @@ and **no managed browser-passkey entitlement is granted**. An App ID setting,
 certificate, edited plist, or ad-hoc signature cannot substitute for Apple's
 approval. The profile checks are prerequisite checks, not proof that macOS has
 accepted a live passkey request; that still needs runtime QA of the resulting
-approved, signed app. The native user-mediated Apple Passwords sheet is a
-separate feature described in `apple-passwords.md`.
+approved, signed app. This optional signing support does not restore Kumo's
+removed Apple Passwords sheet, SDK probes or pairing components. Ordinary
+Chromium WebAuthn and password-extension compatibility have separate runtime
+checks; see [password-extension boundaries](apple-passwords.md).
 
 ## Optional notarization and stapling
 
 Use an **existing** `notarytool` Keychain profile. This tool accepts its profile
-name only; there are no password, token, Apple ID, or environment-dump options.
+name and an optional `--notary-keychain` file selector; it accepts no password,
+token, Apple ID, or environment-dump options. Select the file explicitly when
+the saved profile is outside notarytool's default Keychain search list.
 For example, after inspecting the same plan:
 
 ```sh
@@ -198,8 +204,11 @@ can be tested without a signing identity. Certificate availability has been
 verified. Production signing, notarization, stapling, Gatekeeper launch,
 managed-profile authorization and live passkey success remain separate runtime
 checks; certificate installation alone does not establish their success.
-Successful static signature verification does not replace launching the release and checking navigation, helpers/JIT, extensions, native Passwords, and
-approved passkeys on the target macOS version.
+Successful static signature verification does not replace launching the exact
+release and checking navigation, helpers/JIT, extensions and Chromium WebAuthn
+on the target macOS version. A chosen password extension and any approved
+managed passkey capability need their own compatibility checks; the removed
+built-in Apple Passwords flow is not part of the pending release.
 
 References:
 

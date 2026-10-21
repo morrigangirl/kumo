@@ -29,10 +29,6 @@ for (const card of document.querySelectorAll('[data-app-updates]')) {
 if (buildInfo.engineVersion) {
   $('engineDescription').textContent = `A native macOS browser using Chromium ${buildInfo.engineVersion} with the ungoogled-chromium patch set, a Swift launcher, and local customization. ${buildInfo.sourceCompiledLocally ? 'This engine was compiled locally with Kumo’s native source integration.' : 'This preview packages a verified upstream binary; the repository includes a separate source-build path.'}`;
 }
-if (buildInfo.sourceCompiledLocally) {
-  $('passwordFeatureTitle').textContent = 'Native system AutoFill is included in this source build.';
-  $('passwordFeatureDescription').textContent = 'Right-click a website’s username or password field and choose “Fill with Apple Passwords…”. In the native sheet, right-click the field, choose AutoFill → Passwords, select the website or app entry and saved account in Apple’s chooser, then click Fill. Check the destination shown in the sheet. Navigation or switching tabs cancels the request.';
-}
 const toast = (message, target = 'settingsToast') => { $(target).textContent = message; };
 async function save() { settings = validateSettings(settings); await chrome.storage.local.set({preferences: settings}); render(); }
 function makeOption(value, label) { const option = document.createElement('option'); option.value = value; option.textContent = label; return option; }

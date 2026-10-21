@@ -47,9 +47,8 @@ try {
   await page.waitForFunction(version => document.getElementById('engineDescription')?.textContent.includes(version), metadata.engineVersion);
   assert.match(await page.locator('#engineDescription').textContent(), new RegExp(metadata.engineVersion.replaceAll('.', '\\.')),
     'About must identify the packaged engine rather than a hard-coded preview version');
-  if (metadata.sourceCompiledLocally) {
-    assert.match(await page.locator('#passwordFeatureTitle').textContent(), /included in this source build/);
-  }
+  assert.equal(await page.locator('[data-panel="passwords"], #panel-passwords, #passwordFeatureTitle').count(), 0,
+    'Kumo must not expose its removed built-in password integration');
   await page.screenshot({path: path.join(output, 'home.png'), fullPage: true});
   await page.getByRole('button', {name: 'Open settings'}).click();
   await page.getByRole('button', {name: 'Forest', exact: true}).click();

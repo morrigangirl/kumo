@@ -6,6 +6,8 @@ The latest notarized production release is available for [Apple Silicon Macs](ht
 
 This repository contains Kumo's source, Chromium overlays, build recipes, tests and validation summaries. Upstream checkouts, downloaded model weights, threat-list snapshots and compiled applications are generated locally and excluded from Git. Evidence links under `build/`, `dist/` and `.cache/` refer to local development artifacts. Follow the [source-build instructions](docs/source-build.md), [malware-feed preparation](docs/malware-protection.md#reproduce-the-snapshot) and [GitHub release packaging](docs/github-releases.md) to reproduce the browser. Source version 0.1.1 includes the optional local PhishLang scanner; see [model preparation](docs/phishing-protection.md#build-and-checks).
 
+The pending **0.1.2, build 202610210003** removes Kumo's built-in Apple Passwords integration: its settings, native fill sheet, pairing components and SDK probes. Password extensions continue through Chromium's usual extension support; compatibility with a particular Apple helper is not established. Chromium WebAuthn remains available. This replacement needs a fresh completed source build, validation and notarization before release; the unpublished build 202610210002 is superseded. Widevine DRM is not included, and the reported Crunchyroll playback issue remains unresolved.
+
 The first published release, 0.1.0, used **Chromium 155.0.8059.84**. Source version 0.1.1 uses **156.0.8078.47**, following Chrome's October 20 security release. Its full source build and 19 candidate runtime checks passed. This engine upgrade is a local compatibility port using an immutable, unmerged ungoogled-chromium update. Completed-build receipts distinguish built applications from source targets; production distribution additionally requires Developer ID signing and Apple notarization. See [source build details](docs/source-build.md) and [0.1.1 candidate validation](docs/security-audits/2026-10-21/0.1.1-candidate.md).
 
 The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October 15 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html). The current local source build replaces those older engines. App updates use signed [Kumo GitHub Releases](docs/github-releases.md), with a separate native Sparkle companion. The signed update channel is live for Developer ID-signed, notarized production releases. Apple Development builds keep update checks disabled. The first public binary omitted the experimental PhishLang model and its native helper; domain blocking and ClamAV scanning were included. Version 0.1.1 integrates the model and sandboxed helper with warnings off by default; see [setup, model provenance and limitations](docs/phishing-protection.md).
@@ -53,8 +55,8 @@ The first published malware-enabled engine was built in `build/source-155.0.8059
 | Chrome extensions and themes | Chromium extension APIs retained. The “Install in Kumo” Store helper requests the signed CRX and leaves confirmation to Chromium. Native installation and a real uBlock Origin Lite upgrade from 2026.1012.1545 to 2026.1018.2229 passed, including packed installation, its module worker, APIs and six enabled rulesets. Native Update preserved Kumo's helper with it both enabled and disabled; manifest/package requests omitted cookies and authentication. Google's Just Black theme also passed source-browser installation, native Appearance and its Store-detail link. Automatic extension-update scheduling remains unverified. Legacy NPAPI/Flash/Java plugins are unsupported. |
 | Custom themes | Six start-page palettes, accent color, local wallpaper, custom greeting, preferences import/export, and export of a Chromium toolbar/tab theme manifest. Native Chromium appearance settings and installed Chrome themes remain available. |
 | Any search engine | Five presets and custom HTTP/HTTPS search templates with `{searchTerms}` on the start page, including local search servers. Chromium's native settings independently control address-bar search engines. |
-| Apple Passwords without its extension | The source app adds a native AppKit context-menu sheet with macOS AutoFill → Passwords. The person chooses a credential and clicks Fill. All four source-browser checks passed: exact synthetic Unicode filled the original HTTPS field despite decoy focus; Cancel, navigation and real tab hiding left the website fields empty. Real Apple credential selection and automatic site matching remain unverified. The upstream-binary preview lacks this native source change. |
-| Native Apple passkeys | Chromium WebAuthn remains. The public capability/consent helper is included in source. A production Kumo identity needs Apple's managed browser entitlement and appropriate provisioning; the local development signature does not grant that capability. |
+| Password extensions | Chromium's ordinary extension and Native Messaging support remains. Kumo's built-in Apple Passwords menu, sheet, settings and pairing work are removed from the pending source version. Each password extension retains its own authentication and browser-support requirements; Apple-helper compatibility is unverified. See [password-extension boundaries](docs/apple-passwords.md). |
+| Passkeys and security keys | Chromium WebAuthn remains. Kumo's separate Apple capability probe is removed. Optional managed browser-passkey entitlement/provisioning support remains in release-signing tools; no approved Kumo profile or successful Apple passkey request is claimed. |
 | Codex / Claude Desktop control | Portable Desktop setup, local stdio MCP tools and Native Messaging bridge, opt-in origin-bound tab grants, session revocation, password-field exclusion. Official clients keep their own personal/work account sign-in. No provider token extraction or separate provider API billing is used. |
 | Local phishing warnings | Kumo 0.1.1 integrates the optional PhishLang MobileBERT model with native Swift/Core ML CPU inference, bounded privacy-filtered page inputs and a browser-owned warning page. Warnings start off; enable them in Privacy & security. The first public release, 0.1.0, omitted the model. Synthetic integration does not establish production accuracy or an 8 GB hardware qualification. |
 | Known-malware domains | Local HaGeZi TIF Mini rules block listed domains and subdomains for matching page/resource requests. Enabled by default, with list age, controls and periodic HTTPS feed refresh. No browsing URL lookup or file upload. This layer does not scan downloaded files; see [scope and updates](docs/malware-protection.md). |
@@ -64,13 +66,11 @@ The first published malware-enabled engine was built in `build/source-155.0.8059
 | Web 1/2/3 | Chromium's ordinary web platform, including modern web apps, WebAssembly, WebGL/WebGPU and WebAuthn. Compatible wallet extensions may serve Web3 sites. No wallet, blockchain protocol handler, or IPFS gateway is bundled. |
 | TLS / post-quantum | Chromium/BoringSSL's supported modern TLS and hybrid post-quantum key agreement are inherited. No legacy insecure TLS is enabled. Server support and the actual handshake determine negotiated protection; PQ key agreement does not make the entire certificate ecosystem quantum-safe. |
 
-## Native Apple AutoFill
+## Password extensions
 
-Website forms in Chromium are renderer controls, not AppKit `NSTextField` instances. The source integration adds an actual native username or secure password field that macOS recognizes. Its system menu exposes **AutoFill → Passwords** without the Apple Chrome extension's pairing protocol. macOS still controls unlocking and consent.
+Use Chromium's normal extension installation and management for password tools. The pending source version removes Kumo's Apple Passwords fill command, native sheet, settings page, helper session and pairing UI. This change does not include a profile migration or cookie deletion; Google website sessions remain subject to the existing profile and each website's policies.
 
-The native browser adapter displays the trusted destination origin, targets the original renderer field ID, revalidates the weak document and origin, and cancels on navigation, tab hiding, or closure. It sends the selected value through Chromium's password driver, not through the dashboard extension or agent bridge. It fills one field at a time; automatic site matching is not claimed.
-
-See [SDK findings and evidence](docs/apple-passwords.md), [native Chromium integration](native/chromium/README.md), and the standalone [native AppKit probe](native/apple-passwords/README.md).
+Extension support does not establish that Apple's browser helper accepts Kumo. The owner's custom extension has not been qualified against the replacement build. See [current boundaries and historical SDK findings](docs/apple-passwords.md).
 
 ## Agent setup
 
@@ -91,8 +91,6 @@ The latest [GitHub Releases updater validation](docs/security-audits/2026-10-19/
 ```sh
 npm test
 python3 scripts/source.py self-test
-python3 native/apple-passwords/audit-public-sdk.py
-sh scripts/test-native-passwords.sh
 ```
 
 The following commands retain their historical default `dist/Kumo.app` selectors; some require older seed fixtures. They do not all honor an app-path environment override. Use the exact versioned candidate and separately reviewed selectors described in the [0.1.1 validation](docs/security-audits/2026-10-21/0.1.1-candidate.md) when qualifying that release. Examples for the historical default package:
@@ -115,8 +113,6 @@ node scripts/smoke-dns.mjs
 node scripts/smoke-security.mjs
 # Ordinary headed startup/new tab, with Default NetLog and a local positive control.
 node scripts/smoke-privacy.mjs
-# Source-built engine only: interactive native Fill/Cancel/navigation/tab checks.
-node scripts/smoke-native-passwords.mjs
 # Source build only: native download quarantine and the Extensions sidebar link.
 node scripts/smoke-download.mjs
 node scripts/smoke-native-store-link.mjs
