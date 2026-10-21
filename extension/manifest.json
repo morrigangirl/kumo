@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kumo",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Your local start page, themes, search engines, and opt-in browser agents.",
   "permissions": [
     "storage",

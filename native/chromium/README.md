@@ -1,6 +1,6 @@
 # Native macOS credential sheet
 
-`kumo_password_panel.h/.mm` uses public AppKit only. It creates a visible native username or secure password field where the person can choose the system AutoFill → Passwords action, then explicitly click Fill. It has no extension or extension pairing protocol. macOS retains control over credential selection and authentication.
+`kumo_password_panel.h/.mm` uses public AppKit only. It creates a visible native username or secure password field where the person can choose the system AutoFill → Passwords action, select the website or app entry and saved account in Apple's chooser, then explicitly click Fill. The field is the fill target; account selection stays in Apple's chooser. The sheet does not keep a username history or provide a separate saved-account list. It has no extension or extension pairing protocol. macOS retains control over credential selection and authentication.
 
 ```cpp
 kumo::ShowKumoPasswordPanel(parent_window, canonical_origin, is_password,

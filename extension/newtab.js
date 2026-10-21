@@ -31,7 +31,7 @@ if (buildInfo.engineVersion) {
 }
 if (buildInfo.sourceCompiledLocally) {
   $('passwordFeatureTitle').textContent = 'Native system AutoFill is included in this source build.';
-  $('passwordFeatureDescription').textContent = 'Right-click a website’s username or password field, choose “Fill with Apple Passwords…”, then use AutoFill → Passwords in the native field and click Fill. The destination is shown in the native sheet. Navigation or switching tabs cancels the request.';
+  $('passwordFeatureDescription').textContent = 'Right-click a website’s username or password field and choose “Fill with Apple Passwords…”. In the native sheet, right-click the field, choose AutoFill → Passwords, select the website or app entry and saved account in Apple’s chooser, then click Fill. Check the destination shown in the sheet. Navigation or switching tabs cancels the request.';
 }
 const toast = (message, target = 'settingsToast') => { $(target).textContent = message; };
 async function save() { settings = validateSettings(settings); await chrome.storage.local.set({preferences: settings}); render(); }

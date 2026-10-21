@@ -56,6 +56,62 @@ No code reads Apple's password database, exports credentials, impersonates a sup
 
 For a release, validate native passkeys with the approved, signed Kumo app, its real bundle identity and provisioning profile. Exercise allow/deny, cancellation, registration, assertion, cross-origin iframe policy, private browsing, and navigation cancellation in Chromium's existing WebAuthn tests. An unsigned diagnostic does not establish production support. Automatic domain-matched password retrieval would require an additional documented macOS browser API or a supported integration arrangement for Kumo.
 
+## Session pairing and inline account selection
+
+On 2026-10-21 the owner approved entering Apple's pairing code at the start of a
+browser session. The requested interface is an inline, website-scoped account
+menu, with Apple Passwords as the sole persistent credential store. The pairing
+entry window must remain separate from Apple's code-display window. A normal
+Mac authentication prompt may still be required by Apple.
+
+This is a new integration target, not a feature of the published 0.1.1 app. The
+existing native manual AutoFill sheet remains the implemented browser path.
+The new standalone pairing-panel work does not yet establish an Apple helper
+session, retrieve accounts, fill credentials, or run at browser startup.
+
+`native/chromium/kumo_pairing_panel.mm` supplies a separate movable, non-modal
+entry window which survives focus changes. Its geometry component places the
+whole window inside an available display and leaves a gap around all on-screen
+windows belonging to the supplied helper process, including floating windows.
+It checks the actual AppKit window position after placement, refreshes as the
+helper moves or displays change, and hides/clears entry if safe placement becomes
+unavailable. It reads only helper PID and bounds metadata, never window titles,
+pixels, or credential contents. Six ASCII digits and an explicit Connect action
+are required; cancellation and parent closure clear the entry before completion.
+Run `sh scripts/test-native-pairing.sh` for geometry and native panel tests using
+injected synthetic helper bounds. These tests do not launch Apple's helper or
+read Apple Passwords. Live code-display positioning remains unverified.
+On 2026-10-21, all 47 geometry checks and 75 AppKit panel checks passed with
+warnings treated as errors. The existing manual panel's 93 synthetic assertions
+also passed. Review caught and corrected AppKit frame clamping, floating helper
+window exclusion, and reentrant controller lifetime handling before the final run.
+
+Apple's browser helper has an additional signing-identity requirement. Its
+installed launch constraints do not list Kumo's `app.kumo.browser` identity and
+Carson Press LLC team `PV65ZWXCWX`; Kumo also lacks the managed browser-passkey
+entitlement allowed by an alternative constraint. Browser-list inclusion was
+requested in [Apple password-manager-resources issue #1849](https://github.com/apple/password-manager-resources/issues/1849).
+Apple documents that it must distribute updated helper launch constraints in
+an operating system update. Filing or accepting the issue alone does not enable
+the integration on existing installations.
+
+A capability-only check from the unchanged, Developer ID-signed production
+browser sent `GET_CAPABILITIES` and received no response before the helper exited.
+Full strict signature verification passed before and after the test. The matching
+Apple-helper diagnostic reported `SIGKILL (Code Signature Invalid)` without naming
+a specific failing constraint. This is consistent with the static restrictions,
+but does not prove which constraint failed. No pairing challenge or credential
+query was sent. The isolated profile and extension were removed; the result is
+recorded in `.cache/qa/pairing-helper-admission-2026-10-21-003/result.json`.
+
+The planned session lifetime is browser-process memory only: keep one paired
+helper connection until the browser exits or the person locks it, and do not
+persist PINs, session keys, passwords, or username history. A helper disconnect
+must return to a clearly locked state; no repeated automatic pairing prompts
+or silent credential fallback should occur. This transport/session lifecycle
+and the inline account menu remain to be implemented and validated after helper
+support is established.
+
 ## Sources
 
 - [Apple: App access to saved passwords](https://support.apple.com/guide/security/app-access-to-saved-passwords-sec8762eb992/web) — domain association and user consent requirements.

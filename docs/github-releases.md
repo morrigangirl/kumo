@@ -24,7 +24,7 @@ private keys or accept private keys as command arguments.
 
 The update channel is live with [Kumo 0.1.0, build 202610190001](https://github.com/morrigangirl/kumo/releases/tag/v0.1.0-202610190001), published on October 20, 2026. Apple accepted the Carson Press LLC Developer ID-signed app; its stapled ticket, Gatekeeper assessment and all nested signatures passed verification. The public appcast was fetched anonymously and its Sparkle signature verified. Production builds have update checks enabled; Apple Development builds remain disabled. See [production release validation](security-audits/2026-10-20/production-release.md) and [production signing](signing.md).
 
-The first public binary excludes PhishLang. The next update, Kumo 0.1.1, bundles
+The first public binary excluded PhishLang. Kumo 0.1.1 and later bundle
 the experimental checkpoint and its native inference helper, with warnings off
 by default. Dangerous-domain blocking and ClamAV download scanning remain included.
 Package without `--without-phishlang` to include the model. Model preparation

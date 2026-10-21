@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Regression checks for codesign's inline requirement argument boundary."""
 import importlib.util
+import json
 from pathlib import Path
 import sys
+import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -61,6 +64,56 @@ class ReleaseSignatureVerification(unittest.TestCase):
                 self.metadata = {**valid, field: value}
                 with self.assertRaisesRegex(RuntimeError, "Release signature, timestamp, flags, identity, or entitlements"):
                     self.verify()
+
+
+class NotaryKeychainSelection(unittest.TestCase):
+    def test_default_search_list_is_unchanged_and_no_profile_means_no_authentication(self):
+        self.assertEqual(SIGNER.notary_auth_args(None), [])
+        self.assertEqual(SIGNER.notary_auth_args("Synthetic Notary"),
+                         ["--keychain-profile", "Synthetic Notary"])
+
+    def test_explicit_file_with_spaces_is_one_argument_and_contents_are_never_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            keychain = Path(directory) / "Synthetic Login.keychain-db"
+            keychain.touch()
+            with patch.object(Path, "read_bytes", side_effect=AssertionError("Must not read Keychain")), \
+                    patch.object(Path, "read_text", side_effect=AssertionError("Must not read Keychain")):
+                self.assertEqual(SIGNER.notary_auth_args("Synthetic Notary", keychain),
+                                 ["--keychain-profile", "Synthetic Notary", "--keychain", str(keychain.resolve())])
+
+    def test_malformed_selection_fails_before_signing(self):
+        for profile, keychain in [(None, Path("some.keychain-db")), ("", None), (" ", None),
+                                  ("-profile", None), ("profile\n", None),
+                                  ("profile", "\n"), ("profile", "/nonexistent/synthetic.keychain-db")]:
+            with self.subTest(profile=profile, keychain=keychain), \
+                    patch.object(SIGNER, "run") as command:
+                with self.assertRaises(RuntimeError):
+                    SIGNER.notary_auth_args(profile, keychain)
+                command.assert_not_called()
+
+    def test_signing_uses_selected_keychain_only_for_notary_authentication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            keychain = directory / "Synthetic Login.keychain-db"
+            keychain.touch()
+            response = SimpleNamespace(returncode=0,
+                                       stdout=json.dumps({"id": "synthetic-job", "status": "Accepted"}).encode())
+            with patch.object(SIGNER, "run", return_value=response) as command, \
+                    patch.object(SIGNER, "running_apps", return_value=[]), \
+                    patch.object(SIGNER, "signing_metadata", return_value={"cdhash": "synthetic-hash"}), \
+                    patch.object(SIGNER, "remove_stale_tickets"), \
+                    patch.object(SIGNER, "configure_release_updater"), \
+                    patch.object(SIGNER, "publish_exclusive"):
+                result = SIGNER.sign_release(directory / "input/Kumo.app", directory / "output/Kumo.app", [],
+                                             {"teamId": "PV65ZWXCWX"}, {"name": "Synthetic Identity"}, None,
+                                             "Synthetic Notary", "synthetic-hash", keychain)
+            self.assertIs(result["notarized"], True)
+            calls = [call.args for call in command.call_args_list]
+            submit = [arguments for arguments in calls if arguments[1:3] == ("notarytool", "submit")]
+            self.assertEqual(len(submit), 1)
+            self.assertEqual(submit[0][4:], ("--keychain-profile", "Synthetic Notary", "--keychain",
+                                            str(keychain.resolve()), "--wait", "--output-format", "json"))
+            self.assertTrue(all("--keychain" not in arguments for arguments in calls if arguments not in submit))
 
 
 if __name__ == "__main__":

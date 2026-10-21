@@ -1,6 +1,6 @@
 {
   "name": "kumo-browser",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "A native macOS Chromium browser with local customization and optional agent control",
   "type": "module",
@@ -12,6 +12,7 @@
     "source:package": "scripts/build-source.sh package",
     "test": "node --test tests/*.test.mjs agent-bridge/test/*.test.mjs",
     "test:native": "sh scripts/test-native-passwords.sh",
+    "test:native-pairing": "sh scripts/test-native-pairing.sh",
     "test:native-browser": "node scripts/smoke-native-passwords.mjs",
     "test:browser": "node scripts/smoke-browser.mjs",
     "test:agents": "node scripts/smoke-agents.mjs",

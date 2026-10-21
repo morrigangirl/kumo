@@ -148,6 +148,34 @@ class ReleasePolicy(unittest.TestCase):
                 release.prepare(Namespace(notary_profile=None), configuration())
             runner.assert_not_called()
 
+    def test_prepare_forwards_optional_notary_keychain_as_one_argument(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            app = directory / "Kumo.app"
+            metadata = app / "Contents/Resources/KumoExtension/build-info.json"
+            metadata.parent.mkdir(parents=True)
+            metadata.write_text("{}")
+            notes = directory / "notes.md"
+            notes.write_text("Synthetic release notes.\n")
+            for keychain in (None, directory / "Synthetic Login.keychain-db"):
+                with self.subTest(keychain=keychain), \
+                        patch.object(release.sys, "platform", "darwin"), \
+                        patch.object(release, "git_commit", return_value="a" * 40), \
+                        patch.object(release, "app_metadata", return_value={}), \
+                        patch.object(release, "tools", return_value=Path("synthetic-sign-update")), \
+                        patch.object(release, "run", side_effect=RuntimeError("Stopped before Apple")) as runner:
+                    args = Namespace(app=app, output=directory / "output", notes=notes, identity=None,
+                                     profile=None, notary_profile="Synthetic Notary", notary_keychain=keychain)
+                    with self.assertRaisesRegex(RuntimeError, "Stopped before Apple"):
+                        release.prepare(args, configuration())
+                    runner.assert_called_once()
+                    command = runner.call_args.args
+                    if keychain is None:
+                        self.assertNotIn("--notary-keychain", command)
+                    else:
+                        self.assertEqual(command[-2:], ("--notary-keychain", keychain))
+
     def test_public_model_scope_requires_explicit_pinned_owner_decision_for_included_models(self):
         for build in [{}, {"phishingProtection": {"included": False, "localDevelopmentOnly": True}}]:
             release.validate_public_model_scope(build)

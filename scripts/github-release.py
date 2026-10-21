@@ -269,6 +269,8 @@ def prepare(args, config):
         signed = temporary / "Kumo.app"
         command = [sys.executable, ROOT / "scripts/sign-release.py", "--sign", "--app", app,
                    "--output", signed, "--notary-profile", args.notary_profile]
+        if getattr(args, "notary_keychain", None) is not None:
+            command += ["--notary-keychain", args.notary_keychain]
         if args.identity:
             command += ["--identity", args.identity]
         if args.profile:
@@ -466,6 +468,8 @@ def main():
     prepare_parser.add_argument("--identity")
     prepare_parser.add_argument("--profile", type=Path)
     prepare_parser.add_argument("--notary-profile", required=True)
+    prepare_parser.add_argument("--notary-keychain", type=Path,
+                                help="Keychain file containing the saved notary profile")
     verify_parser = commands.add_parser("verify", help="Verify release assets and archived Developer ID/notarized app locally")
     verify_parser.add_argument("--artifacts", type=Path, required=True)
     upload_parser = commands.add_parser("upload", help="Upload verified assets to a GitHub draft; --publish also makes it public/latest")

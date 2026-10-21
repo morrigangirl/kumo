@@ -73,7 +73,8 @@ std::u16string CopyUTF16(NSString* string) {
                 styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                   backing:NSBackingStoreBuffered
                     defer:NO];
-  _panel.title = isPassword ? @"Fill password from macOS" : @"Fill username from macOS";
+  _panel.title = isPassword ? @"Choose a password in Apple Passwords"
+                            : @"Choose an account in Apple Passwords";
   _panel.restorable = NO;
   _panel.releasedWhenClosed = NO;
   _panel.delegate = self;
@@ -99,21 +100,31 @@ std::u16string CopyUTF16(NSString* string) {
   originScroller.documentView = originView;
   [view addSubview:originScroller];
 
-  NSTextField* instructions = [NSTextField wrappingLabelWithString:
-      @"Right-click the field and choose AutoFill → Passwords, then click Fill. "
-       "macOS controls credential selection and may ask you to unlock Passwords."];
+  NSString* guidance = isPassword
+      ? @"Right-click the field below → AutoFill → Passwords. In Apple’s chooser, "
+         "select the website or app entry and saved account. "
+         "Click Fill once the password appears here."
+      : @"Right-click the field below → AutoFill → Passwords. In Apple’s chooser, "
+         "select the website or app entry and saved account. "
+         "Click Fill once the username appears here.";
+  NSTextField* instructions = [NSTextField wrappingLabelWithString:guidance];
   instructions.frame = NSMakeRect(24, 145, 602, 50);
   [view addSubview:instructions];
 
   if (isPassword) {
     _credentialField = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(24, 98, 602, 30)];
     _credentialField.contentType = NSTextContentTypePassword;
-    _credentialField.placeholderString = @"Select or enter a password";
+    _credentialField.placeholderString = @"Password selected with AutoFill → Passwords";
+    _credentialField.accessibilityLabel = @"Password";
   } else {
     _credentialField = [[NSTextField alloc] initWithFrame:NSMakeRect(24, 98, 602, 30)];
     _credentialField.contentType = NSTextContentTypeUsername;
-    _credentialField.placeholderString = @"Select or enter a username";
+    _credentialField.placeholderString = @"Username selected with AutoFill → Passwords";
+    _credentialField.accessibilityLabel = @"Username";
   }
+  _credentialField.accessibilityHelp = @"Use this field’s AutoFill → Passwords menu. "
+      "In Apple’s chooser, select the website or app entry and saved account, "
+      "then click Fill once the selected value appears here.";
   _credentialField.usesSingleLineMode = YES;
   [view addSubview:_credentialField];
   _panel.initialFirstResponder = _credentialField;

@@ -284,7 +284,30 @@ def configure_release_updater(staged, notarization_requested):
     build_path.write_text(json.dumps(build, indent=2) + "\n")
 
 
-def sign_release(app, output, items, config, identity, profile_bytes, notary_profile, source_hash):
+def notary_auth_args(profile, keychain=None):
+    """Select saved credentials by name/path without reading Keychain contents."""
+    if profile is None:
+        if keychain is not None:
+            raise RuntimeError("A notary Keychain path requires an existing Keychain profile name.")
+        return []
+    if (not isinstance(profile, str) or not profile.strip() or profile.startswith("-")
+            or any(ord(value) < 32 for value in profile)):
+        raise RuntimeError("Use a nonempty existing Keychain profile name, without control characters.")
+    arguments = ["--keychain-profile", profile]
+    if keychain is not None:
+        value = os.fspath(keychain)
+        if not value.strip() or any(ord(character) < 32 for character in value):
+            raise RuntimeError("Use a valid notary Keychain file path without control characters.")
+        keychain = Path(value).expanduser().resolve()
+        if not keychain.is_file():
+            raise RuntimeError("The selected notary Keychain file does not exist.")
+        arguments += ["--keychain", str(keychain)]
+    return arguments
+
+
+def sign_release(app, output, items, config, identity, profile_bytes, notary_profile, source_hash,
+                 notary_keychain=None):
+    authentication = notary_auth_args(notary_profile, notary_keychain)
     if running_apps([app, output]) or output.exists():
         raise RuntimeError("Quit the input/output app and choose a new output path before signing.")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -319,7 +342,7 @@ def sign_release(app, output, items, config, identity, profile_bytes, notary_pro
             archive = temporary / "notarize.zip"
             run("/usr/bin/ditto", "-c", "-k", "--keepParent", staged, archive)
             result = run("/usr/bin/xcrun", "notarytool", "submit", archive,
-                         "--keychain-profile", notary_profile, "--wait", "--output-format", "json", check=False)
+                         *authentication, "--wait", "--output-format", "json", check=False)
             try:
                 response = json.loads(result.stdout)
             except (ValueError, UnicodeError):
@@ -353,6 +376,8 @@ def main():
     parser.add_argument("--identity", help="Exact installed Developer ID Application SHA-1 or name for the selected team")
     parser.add_argument("--profile", type=Path, help="Apple-issued Developer ID macOS profile approving Kumo browser passkeys")
     parser.add_argument("--notary-profile", help="Existing notarytool Keychain profile name; no credentials accepted here")
+    parser.add_argument("--notary-keychain", type=Path,
+                        help="Keychain file containing that saved profile; defaults to notarytool's search list")
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("This release signer requires macOS.")
@@ -363,9 +388,7 @@ def main():
     if (not app.is_dir() or app.suffix != ".app" or output.suffix != ".app"
             or app == output or app.is_relative_to(output) or output.is_relative_to(app)):
         raise RuntimeError("Input must be an existing .app; output must be a separate .app outside it.")
-    if args.notary_profile and (not args.notary_profile.strip() or args.notary_profile.startswith("-")
-                               or any(ord(value) < 32 for value in args.notary_profile)):
-        raise RuntimeError("Use a nonempty existing Keychain profile name, without control characters.")
+    authentication = notary_auth_args(args.notary_profile, args.notary_keychain)
     blockers = []
     if output.exists():
         blockers.append("Output already exists; choose a new path. Releases are never overwritten.")
@@ -435,13 +458,14 @@ def main():
             ["codesign", "--verify", "--deep", "--strict", "--all-architectures", "<STAGE>/" + output.name]]
         if args.notary_profile:
             plan["commands"] += [["ditto", "-c", "-k", "--keepParent", "<STAGE>/" + output.name, "<TEMP>/notarize.zip"],
-                ["xcrun", "notarytool", "submit", "<TEMP>/notarize.zip", "--keychain-profile", args.notary_profile, "--wait", "--output-format", "json"],
+                ["xcrun", "notarytool", "submit", "<TEMP>/notarize.zip", *authentication, "--wait", "--output-format", "json"],
                 ["xcrun", "stapler", "staple", "<STAGE>/" + output.name], ["xcrun", "stapler", "validate", "<STAGE>/" + output.name]]
     print(json.dumps(plan, indent=2), flush=True)
     if blockers:
         return 1
     if args.sign:
-        print(json.dumps(sign_release(app, output, items, config, identity, profile_bytes, args.notary_profile, source_hash), indent=2))
+        print(json.dumps(sign_release(app, output, items, config, identity, profile_bytes,
+                                      args.notary_profile, source_hash, args.notary_keychain), indent=2))
     return 0
 
 
