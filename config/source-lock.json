@@ -1,32 +1,48 @@
 {
   "schema": 1,
-  "chromiumVersion": "155.0.8059.84",
+  "chromiumVersion": "156.0.8078.47",
   "macosPackaging": {
     "repository": "https://github.com/ungoogled-software/ungoogled-chromium-macos.git",
-    "tag": "155.0.8059.39-1.1",
-    "commit": "b1238bb72b02cd36219991d9029c1c65183ea295",
-    "compatibilityPort": "Using the pinned39 macOS recipe with newer84 common patches; upstream macOS84 release is not claimed. Clean local compatibility validation required."
+    "tag": "155.0.8059.84-1.1",
+    "commit": "28552f14731fe8f60422e19bbc2361468d420b25",
+    "compatibilityPort": "Using the pinned 155.0.8059.84 macOS recipe with the immutable, unmerged Chromium 156 common update pull request. An exact guarded local recipe policy selects nine platform/SDK/JavaScript tooling patches and matching official Chromium 156 Clang/Rust/Crubit resources; legacy C++ fallbacks and compiler/security-check workarounds are omitted. This is a local compatibility port, not an upstream macOS 156 release; completed build receipts and release QA must establish compilation and runtime validation."
   },
   "ungoogledChromium": {
     "repository": "https://github.com/ungoogled-software/ungoogled-chromium.git",
-    "commit": "c7b4b99027bb6f9f33848fdbee8a319a3ba3b238",
-    "tag": "155.0.8059.84-1",
-    "path": "vendor/ungoogled-chromium-core"
+    "commit": "0673f8701c94e5688c33ef8ce5e36602d311d246",
+    "path": "vendor/ungoogled-chromium-core",
+    "ref": "refs/pull/4003/head",
+    "pullRequest": {
+      "url": "https://github.com/ungoogled-software/ungoogled-chromium/pull/4003",
+      "status": "unmerged",
+      "headRepository": "https://github.com/Ahrotahn/ungoogled-chromium.git",
+      "headRef": "major",
+      "baseCommit": "19d7f0c9d2c9bf5ae355d7d1ed68605e0396bcfc",
+      "validation": "Upstream code-check, validate-config, and validate-with-source checks succeeded for this exact head; local macOS compatibility and source build remain required."
+    },
+    "includedUpstreamFixes": [
+      {
+        "commit": "e917fa4ff7606ee1b9d05768118081248b3861ee",
+        "description": "Constrain canvas image noise to its destination pixmap bounds.",
+        "ancestry": "The fix commit is an ancestor of the pinned PR head.",
+        "patch": "patches/extra/bromite/flag-fingerprinting-canvas-image-data-noise.patch",
+        "patchBlob": "d1a200be5e0c8f43a149cd91da0478f3fa07cdf9"
+      }
+    ]
   },
   "sourceArchive": {
-    "url": "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-155.0.8059.84-lite.tar.xz",
-    "hashesUrl": "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-155.0.8059.84-lite.tar.xz.hashes",
-    "sha256": "2063834f528029ad02a6a3de6d229c3e8b19bc43864be397944cbda18d7ee680"
+    "url": "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-156.0.8078.47-lite.tar.xz",
+    "hashesUrl": "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-156.0.8078.47-lite.tar.xz.hashes",
+    "sha256": "28432028890ef70e1f2e9db880c500907ad1b04f5ae6b655a3f394b9f2eaa705"
   },
   "rustArchive": {
-    "url": "https://static.rust-lang.org/dist/2026-09-09/rust-nightly-aarch64-apple-darwin.tar.xz",
-    "hashesUrl": "https://static.rust-lang.org/dist/2026-09-09/rust-nightly-aarch64-apple-darwin.tar.xz.sha256",
-    "sha256": "5bdf27279c2a800537eec697576adacd600564e391e6888a9029b8e098a7cdda"
+    "url": "https://commondatastorage.googleapis.com/chromium-browser-clang/Mac_arm64/rust-toolchain-1edd55dcfcd573872c727fa3e086369a71661ee0-2-llvmorg-24-init-7747-g62397f8b.tar.xz",
+    "sha256": "5db21ffd4909ce82c0832df9d1eb06b01b15a54176b7341e39f7181f4b483dbc"
   },
   "targetCpu": "arm64",
   "engineBundle": "out/Default/Chromium.app",
-  "notes": "Source84 SHA256 is pinned from the official publisher hash file. Mac packaging39 and common core84 are independent clean Git pins for a local compatibility port. Rust SHA256 and upstream LLVM/Node SHA512 stay unchanged. The downloaded preview remains39 and is not security-current; this lock describes source only, not the installed runtime.",
-  "chromiumCommit": "5869fe313571d75152b77813cf0a4ee26a4e6df0",
+  "notes": "Official Chromium 156.0.8078.47 source SHA256 and tag commit are pinned; the .48 source change only increments chrome/VERSION. Common patches are pinned to upstream PR #4003 at its exact unmerged head, including the canvas-noise bounds fix. The macOS 155.0.8059.84 recipe is adapted by an exact guarded patch selection and publisher-pinned matching Chromium Clang/Rust/Crubit tools, retaining original 156 Rust parsers, sanitizer behavior, and compiler consistency checks. Existing Node24.12 and verified LLD23.1.3 remain compatibility candidates. This lock alone does not attest successful compilation or runtime validation; completed build receipts and release QA establish those separately. The lock does not describe or upgrade any installed or previously signed 155 runtime.",
+  "chromiumCommit": "1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
   "compatibilityLinker": {
     "version": "23.1.3",
     "repositoryCommit": "0d261d1ca552c95a8f007e061c787ac7132fbcbc",
@@ -38,6 +54,45 @@
     "relativePath": "third_party/kumo-lld/23.1.3-edde6ab11fb5258006ae0493ccaa3112c1a547aac36fe75c0317fb0ec559adea",
     "attestationUrl": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/LLVM-23.1.3-macOS-ARM64.tar.zst.jsonl",
     "attestationSha256": "aa66534f98db1de24900c344beffb6ff5a9a43363ee228040095112808c47834",
-    "reason": "SDK27 arm64e.x1 TAPI support and correct existing DWARF compact-unwind fallback without discarding exception personalities; pinned Chromium compiler and Rust remain unchanged."
+    "reason": "SDK27 arm64e.x1 TAPI support and existing DWARF compact-unwind fallback without discarding exception personalities; retained independently of matching Chromium156 Clang/Rust for the non-LTO local compatibility build."
+  },
+  "officialToolchains": {
+    "source": {
+      "commit": "1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
+      "url": "https://chromium.googlesource.com/chromium/src/+/1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775/DEPS",
+      "sha256": "3535b3175635f9984c82a3f0c2a8e70f0ed2cfdb2a352f40446c9fddf2490703"
+    },
+    "clang": {
+      "url": "https://commondatastorage.googleapis.com/chromium-browser-clang/Mac_arm64/clang-llvmorg-24-init-7747-g62397f8b-53.tar.xz",
+      "sha256": "7ce015cde974fc32bb80e1f48aa7dddbdcbe44fd6f8614de5e63cae4733960d5",
+      "size": 44452152,
+      "generation": 1790402697155562,
+      "outputPath": "third_party/llvm-build/Release+Asserts",
+      "revision": "llvmorg-24-init-7747-g62397f8b-53"
+    },
+    "rust": {
+      "url": "https://commondatastorage.googleapis.com/chromium-browser-clang/Mac_arm64/rust-toolchain-1edd55dcfcd573872c727fa3e086369a71661ee0-2-llvmorg-24-init-7747-g62397f8b.tar.xz",
+      "sha256": "5db21ffd4909ce82c0832df9d1eb06b01b15a54176b7341e39f7181f4b483dbc",
+      "size": 248304876,
+      "generation": 1789143391575553,
+      "outputPath": "third_party/rust-toolchain",
+      "revision": "1edd55dcfcd573872c727fa3e086369a71661ee0-2-llvmorg-24-init-7747-g62397f8b",
+      "crubitRevision": "a355b02da81bc9f350925c73ec0322ce4d5140f1",
+      "bindgenRevision": "73c69d681eec90b84ffba4f993b5fb2f19580781"
+    },
+    "llvmObjdump": {
+      "url": "https://commondatastorage.googleapis.com/chromium-browser-clang/Mac_arm64/llvmobjdump-llvmorg-24-init-7747-g62397f8b-53.tar.xz",
+      "sha256": "f93f89580341f51b80c713776a2f9645f090a971d82e459abbcc11fdd21b2ae4",
+      "size": 5202064,
+      "generation": 1790402697359142,
+      "outputPath": "third_party/llvm-build/Release+Asserts"
+    },
+    "clangFormat": {
+      "url": "https://storage.googleapis.com/chromium-clang-format/945e45cbcb5443c3e569d5e0783fd012154fc4a7",
+      "sha256": "a1fb17260eda2971f52ed341501b93703b0fce69ffb43a179b891b66f6f63e5a",
+      "size": 3245456,
+      "generation": 1779297393605542,
+      "outputPath": "buildtools/mac_arm64-format/clang-format"
+    }
   }
 }

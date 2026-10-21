@@ -28,7 +28,7 @@ def function(text, signature):
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1] /
-                    'build/source-155.0.8059.84/recipe/build/src')
+                    'build/source-156.0.8078.47/recipe/build/src')
 parser.add_argument('--prepared-menu', type=Path,
                     help='reviewed candidate menu, before source-tree promotion')
 ARGS, REST = parser.parse_known_args()

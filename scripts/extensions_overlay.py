@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-time, pinned Chromium 155.0.8059.84 Store navigation/update/script-protection overlay.
+"""One-time, pinned Chromium 156.0.8078.47 Store navigation/update/script-protection overlay.
 
 Apply only after the pinned common/macOS patches and domain substitution. This
 keeps global Store identity and component services disabled. It restores a
@@ -21,7 +21,7 @@ from pathlib import Path
 import tempfile
 from urllib.parse import urlsplit
 
-VERSION = "155.0.8059.84"
+VERSION = "156.0.8078.47"
 MARKER = "KUMO_STORE_EXTENSION_UPDATES_V1"
 CC = "extensions/browser/updater/extension_downloader.cc"
 HEADER = "extensions/browser/updater/extension_downloader.h"
@@ -31,12 +31,12 @@ SCRIPT_GUARD_MARKER = "KUMO_STORE_SCRIPT_GUARD_V1"
 EXPECTED_SHA256 = {
     PARSER_CC: "4f2bd8da7e79c5ae3f2c24b4bdb2ec7ddb54044c3701887adc3b2e9a851959ae",
     'chrome/browser/resources/extensions/service.ts': '63bcf00f0281e0b0ac8c4269102ae8ca5c35e776b6822ece5f622269e9236899',
-    PERMISSIONS_CC: "435134cec4eca1bb73e71aa679a6252e159a69d7fb30f5eff89deca9abbb9a63",
+    PERMISSIONS_CC: "496cc16b52fd414dbc83bb326ea280b410ae81f8bf46700abc006e1f7ab69af5",
     'chrome/browser/resources/settings/appearance_page/appearance_page.html.ts': 'dac96168074bcbc25d6ce6e5b7ad044d0dac2ebabade4a5fe5042a24cf9d5bcc',
     'chrome/browser/resources/settings/appearance_page/appearance_page.ts': '98ffc19d6b8117ba45c9596fddb3c5e4161a7113640274ed0d4bcaa708504946',
-    'chrome/browser/resources/extensions/sidebar.html.ts': 'd97a9b2242867c95b3c34989e20ca2f26f355b1fc7b43d8993af2d7cfa409cf6',
+    'chrome/browser/resources/extensions/sidebar.html.ts': 'ba7a1da913d73729a628279072c1b40e2ff2d21d4596a6b1676e1e32c83270a9',
     'chrome/browser/resources/extensions/sidebar.ts': '00b067519b03f119c91479c40675ae939770388a26a27f39c8712f7574e58bec',
-    'chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc': 'edffe2ddf013cd82193fa96cb89c3ff43b2f33316a0b9213d6a4135143b27dfb',
+    'chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.cc': '28b580692033b83777f5c4885f5316684fa12c6576ff8ef2a62efa459bc9e210',
     CC: "569ea004873e5ef742f1cddb4c7b1285c3ccee9e3eddcc043932a4bd23dc8ff8",
     HEADER: "0483271f7a679dbcfc2f31fbec0cbe7a11741ee0be0a0864ce636fd3c638ee08",
 }

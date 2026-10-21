@@ -1,6 +1,10 @@
 # Building Kumo from Chromium source
 
-`dist/Kumo.app` now runs the locally compiled **155.0.8059.84** engine, matching the source lock. The earlier checksum-verified upstream **155.0.8059.39** preview is historical. The .84 app is Kumo's local compatibility build, not an upstream macOS .84 binary or a notarized production release.
+The source lock targets **156.0.8078.47** for Kumo 0.1.1. Chrome's [October 20 stable update](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html) superseded the earlier 155-based candidate during release preparation. The new source target is undergoing a local macOS compatibility port; a changed lock alone does not upgrade an installed or signed app. Publication remains on hold until this engine is compiled, validated, signed and notarized.
+
+The published, notarized Kumo 0.1.0 and local `dist/Kumo.app` still use **155.0.8059.84**. The earlier checksum-verified upstream **155.0.8059.39** preview and the following .84 development-build evidence are historical. The .84 engine was built locally; it is not an upstream macOS .84 binary.
+
+## Historical 155 build evidence
 
 The fourth source package completed on 2026-10-19 at 13:33 UTC under fingerprint `6a5dd6ca1a04…`, including normal C++ compilation/framework linking, upstream signing and Kumo packaging. It restores the canonical XML update namespace without changing Store network/privacy/publisher gates. Root's strict deep code-signature verification passed with team `PV65ZWXCWX`; the app retains hardened runtime, library validation and the same packaged helper files. See `audit/store-manifest-namespace-001/actual-normal-package-completion.json` and `.cache/qa/source-155.0.8059.84-runtime/22-current-artifact-verification.json`. Run 21 passed a genuine manual native uBlock Origin Lite upgrade from `2026.1012.1545` to `2026.1018.2229`; saved transport and same-session installed-state evidence were independently audited.
 
@@ -20,15 +24,17 @@ The older .39 tree at `build/source` is preserved for diagnosis. No source promo
 
 ## Inputs and build contract
 
-`config/source-lock.json` pins Chromium **155.0.8059.84** (commit `5869fe313571d75152b77813cf0a4ee26a4e6df0`), macOS packaging commit `b1238bb72b02cd36219991d9029c1c65183ea295`, and common ungoogled-chromium commit `c7b4b99027bb6f9f33848fdbee8a319a3ba3b238`. The macOS packaging revision is still the .39 release; using its patch/toolchain recipe with the newer common core is a local compatibility port. All 23 Mac patches applied cleanly, and the local product build completed; feature-specific runtime checks remain. The two repositories are pinned independently and kept clean; no upstream .84 macOS release is implied. Source and Rust archive SHA256 values are pinned from their publishers' hash files. The compiler LLVM and Node SHA512 values are inherited from the pinned platform manifest. A separate compatibility-linker entry pins the official LLVM 23.1.3 archive and extracted LLD executable SHA256, with an immutable version-and-binary-hash directory; the Chromium compiler and Rust toolchain remain unchanged. The driver inserts the extra source/Rust checks into an isolated copy of the upstream recipe, so its downloader verifies cached and newly downloaded archives **before extraction**. The vendored repositories stay clean.
+`config/source-lock.json` pins Chromium **156.0.8078.47** (commit `1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775`), macOS packaging commit `28552f14731fe8f60422e19bbc2361468d420b25` (tag `155.0.8059.84-1.1`), and common ungoogled-chromium commit `0673f8701c94e5688c33ef8ce5e36602d311d246`. The common revision is the exact head of [upstream PR #4003](https://github.com/ungoogled-software/ungoogled-chromium/pull/4003), which is unmerged. Its upstream source/config/code checks passed, but those checks do not establish macOS compilation or runtime behavior. This is Kumo's local compatibility port, not an upstream macOS 156 release. The pinned common revision includes the canvas-noise pixmap-bounds fix at `e917fa4ff7606ee1b9d05768118081248b3861ee`. Chromium's `.48` revision only increments `chrome/VERSION` from `.47`; it adds no security-code changes.
 
-The preferred wrapper chooses a versioned workspace from the current lock: `build/source-155.0.8059.84/recipe/build/src`, with Chromium output in `out/Default`. An explicit `--work-dir` overrides that choice. `source.py` retains its older `build/source` default, so direct invocations must pass the intended workspace; the preserved .39 tree there must not be relabeled as .84. The completed raw engine output is:
+The two upstream repositories are pinned independently and kept clean. The source archive SHA256 comes from its official hash file. Matching Chromium Clang 24 and Rust/Crubit packages, the formatter and llvm-objdump use SHA256, size and object-generation pins from the official 156 `DEPS` file. Node 24.12.0 retains its publisher-pinned platform-manifest SHA512. A separately verified LLVM 23.1.3 linker remains selected for SDK 27 compatibility with this non-LTO build. The compatibility adapter changes only the isolated recipe: it selects nine retained platform patches, omits old compiler/Rust/parser/GN workarounds, and installs the official ready-made Rust layout. It preserves upstream parser implementations and default feature states, including Rust WebBundle parsing, plus the new font safety routing, sanitizer detection, compiler consistency checks and strict GN dependency policy. Generic CBOR retains Chromium's existing feature defaults; this does not force every CBOR operation to use Rust. Cached and newly downloaded archives are verified **before extraction**. The clean vendored repositories are unchanged.
+
+The preferred wrapper chooses a versioned workspace from the current lock: `build/source-156.0.8078.47/recipe/build/src`, with Chromium output in `out/Default`. An explicit `--work-dir` overrides that choice. `source.py` retains its older `build/source` default, so direct invocations must pass the intended workspace; preserved older trees must not be relabeled as 156. After a successful build, the expected raw engine output is:
 
 ```text
-build/source-155.0.8059.84/recipe/build/src/out/Default/Chromium.app
+build/source-156.0.8078.47/recipe/build/src/out/Default/Chromium.app
 ```
 
-`config/chromium.gn` overrides upstream GN assignments without duplicate definitions. Its first-build defaults disable PGO and ThinLTO, omit debug symbols, use four compile jobs, and retain the sandbox and ordinary TLS behavior. `use_lld=true` and `lld_path` select the separately verified LLVM 23.1.3 linker: the original pinned LLD rejects SDK 27’s new `arm64e.x1` TAPI targets, while the interim Apple linker hit its compact-unwind personality limit. `use_icf=false` retains the prior no-deduplication behavior and ThinLTO remains disabled. The new linker preserves existing DWARF fallback metadata rather than removing exception personalities. The complete browser linked successfully; feature-specific runtime checks remain the validation boundary. It does not add sandbox, certificate, remote-debugging, or TLS bypass switches. The upstream FFmpeg codec and Widevine build settings are inherited; these settings do not provide a Widevine CDM binary or establish media-service support.
+`config/chromium.gn` overrides upstream GN assignments without duplicate definitions. Its first-build defaults disable PGO and ThinLTO, omit debug symbols, use four compile jobs, and retain the sandbox and ordinary TLS behavior. `use_lld=true` and `lld_path` select the separately verified LLVM 23.1.3 linker: the original pinned LLD rejects SDK 27’s new `arm64e.x1` TAPI targets, while the interim Apple linker hit its compact-unwind personality limit. `use_icf=false` retains the prior no-deduplication behavior and ThinLTO remains disabled. The new linker preserves existing DWARF fallback metadata rather than removing exception personalities. The earlier 155 browser linked successfully; 156 must pass its own build and runtime checks. The configuration does not add sandbox, certificate, remote-debugging, or TLS bypass switches. The upstream FFmpeg codec and Widevine build settings are inherited; these settings do not provide a Widevine CDM binary or establish media-service support.
 
 Kumo's source overlay changes the Chromium `BRANDING` short/installer names and engine bundle identifier, and selected actual application strings. Technical executable, framework, and output bundle names remain `Chromium` so the native launcher and packaging tool can consume the engine. Copyright notices remain intact. This is partial product branding, not replacement of every translated Chromium string or icon.
 
@@ -46,13 +52,10 @@ brew install ninja esbuild typescript coreutils readline zstd
 
 The upstream platform recipe also requires Git, Python 3.10+, Go, Node/npm, Perl, and Apple's command-line signing tools. Full Xcode must be selected and its license accepted. If Xcode reports a missing Metal toolchain, install its component with `xcodebuild -downloadComponent MetalToolchain`. The pinned upstream patches refer specifically to `/opt/homebrew/bin/esbuild` and `/opt/homebrew/bin/tsc`; the doctor checks both paths. The archive-based path avoids `depot_tools`; Python 3.14.6 passed the offline driver fixtures and drove the completed local Chromium build.
 
-If the ignored `vendor` directory is absent in a fresh checkout, obtain the pinned upstream repositories:
+If the ignored `vendor` directory is absent in a fresh checkout, obtain the exact pinned upstream repositories with the guarded preparation tool:
 
 ```sh
-git clone --recurse-submodules https://github.com/ungoogled-software/ungoogled-chromium-macos.git vendor/ungoogled-chromium-macos
-git -C vendor/ungoogled-chromium-macos checkout --recurse-submodules b1238bb72b02cd36219991d9029c1c65183ea295
-git -C vendor/ungoogled-chromium-macos submodule update --init --recursive
-git clone --depth 1 --branch 155.0.8059.84-1 https://github.com/ungoogled-software/ungoogled-chromium.git vendor/ungoogled-chromium-core
+python3 scripts/prepare-release-vendor.py
 ```
 
 The driver rejects different commits or locally modified upstream repositories. The source lock and source overlay live outside vendor.
@@ -67,7 +70,7 @@ python3 scripts/source.py self-test
 scripts/build-source.sh build --dry-run
 ```
 
-Prepare downloads and verifies the locked Chromium archive and arm64 toolchains, prunes the upstream file list, applies both patch series, performs domain substitution, applies Kumo branding, native Passwords integration and the narrow anonymous Store-update overlay, and writes merged GN arguments:
+Prepare downloads and verifies the locked Chromium archive and arm64 toolchains, prunes the upstream file list, applies both patch series, performs domain substitution, applies the guarded enterprise test-only compatibility shim, Kumo branding, native Passwords integration, the narrow anonymous Store-update overlay and native download-scanning hooks, and writes merged GN arguments:
 
 ```sh
 scripts/build-source.sh prepare
@@ -75,7 +78,7 @@ scripts/build-source.sh prepare
 
 Use `scripts/build-source.sh` as the default compilation entry point. It selects the full Xcode macOS SDK and CC/CXX for GN’s bootstrap helper, chooses the versioned workspace from the source lock unless `--work-dir` is supplied, then forwards arguments to `source.py` (with no command it defaults to `build`). This avoids the observed generic-LLVM bootstrap failure without changing the prepared source fingerprint or Chromium compile flags. Chromium’s generated build still uses the pinned LLVM toolchain and its GN configuration.
 
-For a direct `python3 scripts/source.py build --work-dir build/source-155.0.8059.84` or `package` invocation, the equivalent environment setup is:
+For a direct `python3 scripts/source.py build --work-dir build/source-156.0.8078.47` or `package` invocation, the equivalent environment setup is:
 
 ```sh
 export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
@@ -83,7 +86,7 @@ export CC="$(xcrun --find clang)"
 export CXX="$(xcrun --find clang++)"
 ```
 
-Build performs preparation if needed, rejects GN arguments that differ from the merged locked configuration, bootstraps GN, builds Rust bindgen, runs `gn gen --fail-on-unused-args`, executes `ninja -C out/Default -j 4 chrome`, and invokes the upstream signing script with its explicit helper/framework entitlements. It produces a locally ad-hoc signed engine and an engine DMG. Only after those steps succeed does it write the adjacent `Chromium.app.kumo-build-receipt.json`, binding the exact engine/framework bytes and versions to the current source lock, input fingerprint, and effective GN arguments. An earlier receipt is invalidated before outputs may change; failed or changed-input builds do not receive one. This command executes compilation; it is not a placeholder:
+Build performs preparation if needed, rejects GN arguments that differ from the merged locked configuration, verifies the publisher-pinned prebuilt bindgen/Crubit tools, bootstraps GN from the matching source, runs `gn gen --fail-on-unused-args`, executes `ninja -C out/Default -j 4 chrome`, and invokes the upstream signing script with its explicit helper/framework entitlements. It produces a locally ad-hoc signed engine and an engine DMG. Only after those steps succeed does it write the adjacent `Chromium.app.kumo-build-receipt.json`, binding the exact engine/framework bytes and versions to the current source lock, input fingerprint, and effective GN arguments. An earlier receipt is invalidated before outputs may change; failed or changed-input builds do not receive one. This command executes compilation; it is not a placeholder:
 
 ```sh
 scripts/build-source.sh build --jobs 4
@@ -98,12 +101,12 @@ scripts/build-source.sh package --jobs 4
 After a successful build, the equivalent explicit packaging command is:
 
 ```sh
-python3 scripts/package.py --engine-app build/source-155.0.8059.84/recipe/build/src/out/Default/Chromium.app
+python3 scripts/package.py --engine-app build/source-156.0.8078.47/recipe/build/src/out/Default/Chromium.app
 ```
 
-Source packaging requires that completed-build receipt and matching raw output bytes; supplying an arbitrary app path is not proof of a local build. The receipt guards accidental stale or mismatched inputs, rather than providing attestation against someone who can edit the workspace itself. If Xcode or its SDK changes, rebuild the GN/bindgen helpers before running the normal driver again; bootstrap SDK environment changes are not necessarily part of Ninja's cached command hashes.
+Source packaging requires that completed-build receipt and matching raw output bytes; supplying an arbitrary app path is not proof of a local build. The receipt guards accidental stale or mismatched inputs, rather than providing attestation against someone who can edit the workspace itself. If Xcode or its SDK changes, rebuild the locally bootstrapped GN helper and review the prepared toolchain before running the normal driver again; bootstrap SDK environment changes are not necessarily part of Ninja's cached command hashes. Missing official bindgen or Crubit tools stop the build rather than triggering an external-toolchain rebuild.
 
-The current app records `sourceCompiledLocally: true` with both `engineVersion` and `sourceTargetVersion` equal to `155.0.8059.84`. Its path-free embedded receipt records the values below; the raw artifact hashes precede Kumo re-signing. The first `5dd044…`/`0dee1533…`, second `1846ae…`/`556c552b…` and third `3a1aca…`/`65b1545d…` input/embedded-receipt pairs are historical. The adjacent local receipt at `build/source-155.0.8059.84/recipe/build/src/out/Default/Chromium.app.kumo-build-receipt.json` additionally contains its local app path and therefore has a different checksum (`68d88736…` for this build).
+The historical fourth .84 development package recorded `sourceCompiledLocally: true` with both `engineVersion` and `sourceTargetVersion` equal to `155.0.8059.84`. Its path-free embedded receipt records the values below; the raw artifact hashes precede Kumo re-signing. These are not the receipt values of the later malware-enabled 0.1.0 release or the pending 156 build. The first `5dd044…`/`0dee1533…`, second `1846ae…`/`556c552b…` and third `3a1aca…`/`65b1545d…` input/embedded-receipt pairs are also historical. The adjacent local receipt at `build/source-155.0.8059.84/recipe/build/src/out/Default/Chromium.app.kumo-build-receipt.json` additionally contains its local app path and therefore has a different checksum (`68d88736…` for that build).
 
 ```text
 completedAt:          2026-10-19T13:31:44Z
@@ -164,7 +167,7 @@ The native Apple Passwords overlay is integrated into source preparation through
 
 ## Security boundary and updates
 
-This base is not security-equivalent to Google Chrome. In particular, upstream compiles with `safe_browsing_mode=0` and removes Safe Browsing source; Google malware/phishing reputation checks are unavailable. Flipping that GN value alone will not restore them. Google component-update endpoints and browser auto-updates are also disabled; stale security data and delayed engine updates remain release risks. No automatic Kumo updater has been implemented.
+This base is not security-equivalent to Google Chrome. In particular, upstream compiles with `safe_browsing_mode=0` and removes Safe Browsing source; Google malware/phishing reputation checks are unavailable. Flipping that GN value alone will not restore them. Google component-update endpoints and Google's browser updater are disabled; stale security data and delayed engine updates remain release risks. Kumo production builds use a separate signed Sparkle updater through [GitHub Releases](github-releases.md); a release reaches users only after a newly compiled engine is signed, notarized and published. Domain blocking, local ClamAV download scanning and the optional PhishLang model have separate coverage and limitations.
 
 Kumo's **source** recipe omits the upstream `disable-download-quarantine.patch`, preserving Chromium's OS download quarantine path, and restores Store-origin process isolation after domain substitution. The first source app includes those corrections and passed original-download quarantine validation with an inert local file. That does not establish file reputation or exhaustive Store process-isolation validation. The historical upstream preview retained its own quarantine-removal patch.
 
@@ -178,7 +181,7 @@ Updating the lock is active maintenance: choose a supported upstream security re
 
 - [Chromium macOS source build](https://chromium.googlesource.com/chromium/src/+/main/docs/mac_build_instructions.md) and [Apple Silicon support](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/mac_arm64.md).
 - [Pinned ungoogled macOS build recipe](https://github.com/ungoogled-software/ungoogled-chromium-macos/tree/b1238bb72b02cd36219991d9029c1c65183ea295) and [patch processing design](https://github.com/ungoogled-software/ungoogled-chromium/blob/c7b4b99027bb6f9f33848fdbee8a319a3ba3b238/docs/design.md).
-- [Official Chromium source hashes](https://commondatastorage.googleapis.com/chromium-browser-official/chromium-155.0.8059.84-lite.tar.xz.hashes) and [Rust archive SHA256](https://static.rust-lang.org/dist/2026-09-09/rust-nightly-aarch64-apple-darwin.tar.xz.sha256).
+- [Official Chromium 156 source hashes](https://commondatastorage.googleapis.com/chromium-browser-official/chromium-156.0.8078.47-lite.tar.xz.hashes) and [matching official toolchain pins](https://chromium.googlesource.com/chromium/src/+/1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775/DEPS).
 - [Chromium API keys and restricted browser sign-in](https://www.chromium.org/developers/how-tos/api-keys/) and [Google's private API access policy](https://blog.chromium.org/2021/01/limiting-private-api-availability-in.html).
 - [LLVM 23.1.3 release](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.3), [SDK 27 TAPI target regression](https://github.com/llvm/llvm-project/blob/llvmorg-23.1.3/lld/test/MachO/arm64-x1.s), and [DWARF compact-unwind fallback handling](https://github.com/llvm/llvm-project/blob/llvmorg-23.1.3/lld/MachO/UnwindInfoSection.cpp#L356-L377).
 - [Pinned upstream GN flags](https://github.com/ungoogled-software/ungoogled-chromium/blob/c7b4b99027bb6f9f33848fdbee8a319a3ba3b238/flags.gn) and [upstream quarantine-removal patch](https://github.com/ungoogled-software/ungoogled-chromium/blob/c7b4b99027bb6f9f33848fdbee8a319a3ba3b238/patches/extra/ungoogled-chromium/disable-download-quarantine.patch).

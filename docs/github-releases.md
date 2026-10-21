@@ -53,8 +53,8 @@ Update `docs/releases/<version>.md`, then tag the exact reviewed commit and push
 that tag. For the current configured version:
 
 ```sh
-git tag -a v0.1.1-202610200001 -m 'Kumo 0.1.1'
-git push origin v0.1.1-202610200001
+git tag -a v0.1.1-202610200002 -m 'Kumo 0.1.1'
+git push origin v0.1.1-202610200002
 ```
 
 Prepare the pinned tools and data, finish the locked source build and package
@@ -67,14 +67,14 @@ python3 scripts/prepare-sparkle.py
 python3 scripts/prepare-release-vendor.py
 python3 scripts/prepare-malware-feed.py
 /usr/bin/python3 scripts/prepare-phishlang.py
-scripts/build-source.sh build --work-dir build/release-source-0.1.1-202610200001
+scripts/build-source.sh build --work-dir build/release-source-0.1.1-202610200002
 python3 scripts/package.py \
-  --engine-app build/release-source-0.1.1-202610200001/recipe/build/src/out/Default/Chromium.app
+  --engine-app build/release-source-0.1.1-202610200002/recipe/build/src/out/Default/Chromium.app
 
 python3 scripts/github-release.py doctor
 python3 scripts/github-release.py prepare \
   --app dist/Kumo.app \
-  --output dist/github-releases/v0.1.1-202610200001 \
+  --output dist/github-releases/v0.1.1-202610200002 \
   --notes docs/releases/0.1.1.md \
   --identity 'THE_40_CHARACTER_DEVELOPER_ID_SHA1' \
   --notary-profile 'EXISTING_NOTARYTOOL_KEYCHAIN_PROFILE'
@@ -119,10 +119,10 @@ Uploading defaults to a **draft**:
 
 ```sh
 python3 scripts/github-release.py verify \
-  --artifacts dist/github-releases/v0.1.1-202610200001
+  --artifacts dist/github-releases/v0.1.1-202610200002
 
 python3 scripts/github-release.py upload \
-  --artifacts dist/github-releases/v0.1.1-202610200001
+  --artifacts dist/github-releases/v0.1.1-202610200002
 ```
 
 The tool requires the exact source tag, checks all release build counters,
@@ -133,7 +133,7 @@ this tool. Review the draft, then make it public and latest:
 
 ```sh
 python3 scripts/github-release.py upload \
-  --artifacts dist/github-releases/v0.1.1-202610200001 \
+  --artifacts dist/github-releases/v0.1.1-202610200002 \
   --publish
 ```
 

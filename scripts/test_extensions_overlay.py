@@ -14,11 +14,13 @@ from unittest import mock
 PROJECT_ROOT = next((parent for parent in Path(__file__).resolve().parents
                      if (parent / "config/source-lock.json").is_file()),
                     Path(__file__).resolve().parents[1])
-LOCKED_SOURCE = PROJECT_ROOT / "build/source-155.0.8059.84/recipe/build/src"
+LOCKED_SOURCE = Path(os.environ.get("KUMO_SOURCE_TEST_TREE",
+                                  PROJECT_ROOT / "build/source-156.0.8078.47/recipe/build/src"))
 
 SPEC = importlib.util.spec_from_file_location("extensions_overlay", Path(__file__).with_name("extensions_overlay.py"))
 overlay = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(overlay)
+ORIGINAL_EXPECTED_SHA256 = dict(overlay.EXPECTED_SHA256)
 
 
 class ExtensionOverlayFixtures(unittest.TestCase):
@@ -35,7 +37,7 @@ class ExtensionOverlayFixtures(unittest.TestCase):
                             for rel, hooks in overlay.NAVIGATION_HOOKS.items()})
         for rel, text in self.inputs.items():
             self.put(rel, text)
-        self.put("chrome/VERSION", "MAJOR=155\nMINOR=0\nBUILD=8059\nPATCH=84\n")
+        self.put("chrome/VERSION", "MAJOR=156\nMINOR=0\nBUILD=8078\nPATCH=47\n")
         self.put("extensions/common/extension_urls.cc", "global Store classifier stays disabled\n")
         self.put("components/update_client/update_checker.cc", "component checks stay disabled\n")
         hashes = {rel: overlay.digest(text) for rel, text in self.inputs.items()}
@@ -463,16 +465,36 @@ global.chrome = {
         with self.assertRaisesRegex(RuntimeError, "requires Chromium"):
             overlay.apply_overlay(self.src)
 
-    def test_actual_pristine_84_fixture_copy_only(self):
+    def test_upstream_156_user_block_and_capture_checks_survive_store_guard(self):
+        path = LOCKED_SOURCE / overlay.PERMISSIONS_CC
+        if not path.is_file():
+            self.skipTest("The locked Chromium 156 permissions source is unavailable")
+        before = path.read_text()
+        if overlay.SCRIPT_GUARD in before:
+            before = before.replace(overlay.SCRIPT_GUARD, "", 1)
+        # The whole upstream source is pinned independently from the synthetic
+        # fixture hashes installed by setUp. Chromium 156 adds these protections;
+        # the Kumo Store exception must retain both byte for byte.
+        self.assertEqual(hashlib.sha256(before.encode()).hexdigest(),
+                         ORIGINAL_EXPECTED_SHA256[overlay.PERMISSIONS_CC])
+        after = overlay.transform(before, overlay.PERMISSIONS_HOOKS)
+        for guard in ("!IsPolicyBlockedHostUnsafe(url) && !IsUrlBlockedByUser(url);",
+                      "  if (!ExtensionsClient::Get()->IsCapturableURL(origin_url, error)) {\n"
+                      "    return false;\n  }"):
+            self.assertEqual(before.count(guard), 1)
+            self.assertEqual(after.count(guard), 1)
+        self.assertEqual(after.replace(overlay.SCRIPT_GUARD, "", 1), before)
+
+    def test_actual_pristine_156_fixture_copy_only(self):
         real = LOCKED_SOURCE
         if not all((real / rel).is_file() for rel in overlay.EXPECTED_SHA256):
-            self.skipTest("Prepared pristine .84 candidate is unavailable")
+            self.skipTest("Prepared pristine 156.0.8078.47 candidate is unavailable")
         hashes = {rel: hashlib.sha256((real / rel).read_bytes()).hexdigest() for rel in overlay.EXPECTED_SHA256}
         # Stop the small synthetic-baseline patch while testing real pinned files.
         self.patch.stop()
         try:
             if hashes != overlay.EXPECTED_SHA256:
-                self.skipTest("The local .84 tree has already moved beyond the pristine fixture")
+                self.skipTest("The local 156.0.8078.47 tree has already moved beyond the pristine fixture")
             result = overlay.validate_copy(real)
             self.assertEqual(set(result), {overlay.CC, overlay.HEADER, overlay.PERMISSIONS_CC, overlay.PARSER_CC, *overlay.NAVIGATION_HOOKS})
             self.assertEqual(hashes, {rel: hashlib.sha256((real / rel).read_bytes()).hexdigest() for rel in hashes})

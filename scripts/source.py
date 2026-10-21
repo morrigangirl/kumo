@@ -24,8 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "config/source-lock.json"
 GN_PATH = ROOT / "config/chromium.gn"
 VENDOR = ROOT / "vendor/ungoogled-chromium-macos"
-INTEGRATION_OVERLAYS = ("native_overlay.py", "extensions_overlay.py", "malware_overlay.py")
+INTEGRATION_OVERLAYS = ("native_overlay.py", "extensions_overlay.py", "malware_overlay.py",
+                        "macos_recipe_compat.py")
 DOWNLOAD_GUARD_INPUTS = ("kumo_download_guard.h", "kumo_download_guard.mm")
+# Exact post-common/macOS/domain preimage; refresh only after a reviewed probe.
+ENTERPRISE_PROFILE_PREIMAGE_SHA256 = "e5680cca4d6c5ff2d0406e17baa44c49283f38807a7429bd0e650b6b618d4900"
 
 
 def run(*command, cwd=None, env=None):
@@ -133,23 +136,6 @@ def merge_gn(*texts):
         f"{key} = {value}\n" for key, value in assignments.items())
 
 
-def bindgen_environment(src, build_env):
-    """Use the SDK's compatible linker and pinned Rust libs for this host tool."""
-    linker = output("xcrun", "--find", "ld")
-    if not Path(linker).is_file() or any(character.isspace() for character in linker):
-        raise RuntimeError("Expected an Xcode linker path without whitespace")
-    rust_lib = src / "third_party/rust-toolchain/rustc/lib"
-    if not (rust_lib / "libLLVM.dylib").is_file():
-        raise RuntimeError("Missing pinned Rust libLLVM for the bindgen host build")
-    result = build_env.copy()
-    # Upstream appends -fuse-ld=lld. Clang's explicit --ld-path takes precedence
-    # while preserving all of the helper's other compiler and linker options.
-    result["RUSTFLAGS"] = result.get("RUSTFLAGS", "") + f" -Clink-arg=--ld-path={linker}"
-    result["LDFLAGS"] = result.get("LDFLAGS", "") + f" --ld-path={linker}"
-    result["DYLD_LIBRARY_PATH"] = str(rust_lib)
-    return result
-
-
 def compatibility_linker(src, lock, verify_only=False):
     """Keep the SDK-compatible release linker separate from pinned compilers."""
     spec = importlib.util.spec_from_file_location(
@@ -168,8 +154,7 @@ def enterprise_profile_compatibility(src):
     """Cancel the test-only caller of an intentionally omitted sign-in controller."""
     path = src / "chrome/browser/enterprise/signin/profile_management_disclaimer_service.cc"
     data = path.read_bytes()
-    expected = "881817855117a9abf0b487f9113ef3a9b62d841b4d4305565403b43d10b53991"
-    if hashlib.sha256(data).hexdigest() != expected:
+    if hashlib.sha256(data).hexdigest() != ENTERPRISE_PROFILE_PREIMAGE_SHA256:
         raise RuntimeError("Enterprise sign-in compatibility preimage changed; review before applying")
     text = data.decode("utf-8")
     old = """  if (profile_separation_policies_for_testing_.has_value() ||
@@ -178,12 +163,12 @@ def enterprise_profile_compatibility(src):
     state_->profile_creation_controller =
         ManagedProfileCreationController::CreateManagedProfileForTesting(
             &profile_.get(), GetExtendedAccountInfo(state_->account_id),
-            // The access point always has a value if the account_id is set.
             *state_->access_point,
             base::BindOnce(&ProfileManagementDisclaimerService::
                                OnManagedProfileCreationResult,
                            weak_ptr_factory_.GetWeakPtr()),
-            profile_separation_policies_for_testing_,
+            profile_separation_policies_for_testing_.value_or(
+                std::move(profile_separation_policies)),
             user_choice_for_testing_);
     return;
   }
@@ -212,6 +197,60 @@ def enterprise_profile_compatibility(src):
     finally:
         if temporary is not None and temporary.exists():
             temporary.unlink()
+
+
+def macos_recipe_helper():
+    """Load the mandatory recipe and platform compatibility policy."""
+    path = ROOT / "scripts/macos_recipe_compat.py"
+    spec = importlib.util.spec_from_file_location("_kumo_macos_recipe_compatibility", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Cannot load pinned macOS recipe compatibility helper")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def macos_recipe_compatibility(recipe, lock):
+    """Adapt only the isolated recipe with the exact pinned compatibility helper."""
+    module = macos_recipe_helper()
+    record = module.adapt_recipe(recipe, lock)
+    if not isinstance(record, dict):
+        raise RuntimeError("macOS recipe compatibility helper returned no verification record")
+    return {"helper": "scripts/macos_recipe_compat.py",
+            "helperSHA256": digest(ROOT / "scripts/macos_recipe_compat.py"), "verification": record}
+
+
+def macos_platform_compatibility(recipe, lock):
+    """Retrieve and verify pinned platform tools before attesting completion."""
+    module = macos_recipe_helper()
+    record = module.prepare_platform(recipe, lock)
+    if not isinstance(record, dict):
+        raise RuntimeError("macOS platform helper returned no verification record")
+    result = {"helper": "scripts/macos_recipe_compat.py",
+              "helperSHA256": digest(ROOT / "scripts/macos_recipe_compat.py"), "verification": record}
+    # The platform stage can resume after interrupted retrieval. Publish its
+    # verification record only after the helper finishes every required check.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=recipe.parent,
+                                         prefix=".kumo-platform-", delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(result, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+        os.replace(temporary, recipe.parent / "macos-platform-verification.json")
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return result
+
+
+def verify_macos_platform(recipe, lock):
+    """Recheck installed tools against the exact cached publisher archives."""
+    module = macos_recipe_helper()
+    record = module.verify_platform(recipe, lock)
+    if not isinstance(record, dict):
+        raise RuntimeError("macOS platform verification returned no verification record")
+    return record
 
 
 def brand_source(src):
@@ -294,6 +333,9 @@ def create_recipe(work, lock):
         shutil.rmtree(recipe / "ungoogled-chromium")
         shutil.copytree(common, recipe / "ungoogled-chromium",
                         ignore=shutil.ignore_patterns(".git", "build", "__pycache__", "*.pyc"))
+    # Select the exact platform patches and official toolchain manifests before
+    # checking/inserting their locked archive hashes. Only this copy is changed.
+    record = macos_recipe_compatibility(recipe, lock)
     # Keep verified archives outside the mutable recipe/source workspace so a
     # failed patch or refreshed overlay never requires downloading them again.
     cache = ROOT / ".cache/source-downloads"
@@ -302,17 +344,22 @@ def create_recipe(work, lock):
     (recipe / "build/download_cache").symlink_to(cache, target_is_directory=True)
     # The archive's official hashes are additionally pinned here. The upstream
     # downloader checks these before unpacking, including already-cached files.
-    for relative, section, item in (("ungoogled-chromium/downloads.ini", "chromium", "sourceArchive"),
-                                    ("downloads-arm64.ini", "rust", "rustArchive")):
-        path = recipe / relative
-        ini = configparser.ConfigParser(defaults={"_chromium_version": lock["chromiumVersion"]})
-        ini.read(path)
-        if ini.get(section, "url") != lock[item]["url"]:
-            raise RuntimeError(f"Pinned upstream resource URL changed: {section}")
-        ini.set(section, "sha256", lock[item]["sha256"])
-        # ConfigParser writes interpolation values literally, as upstream expects.
-        with path.open("w") as handle:
-            ini.write(handle)
+    path = recipe / "ungoogled-chromium/downloads.ini"
+    ini = configparser.ConfigParser(defaults={"_chromium_version": lock["chromiumVersion"]})
+    ini.read(path)
+    if ini.get("chromium", "url") != lock["sourceArchive"]["url"]:
+        raise RuntimeError("Pinned upstream resource URL changed: chromium")
+    ini.set("chromium", "sha256", lock["sourceArchive"]["sha256"])
+    # ConfigParser writes interpolation values literally, as upstream expects.
+    with path.open("w") as handle:
+        ini.write(handle)
+    # The platform adapter owns the exact official LLVM/Rust/objdump manifest
+    # bytes. Validate Rust independently without reserializing that manifest.
+    rust_ini = configparser.ConfigParser()
+    rust_ini.read(recipe / "downloads-arm64.ini")
+    if (rust_ini.get("rust", "url") != lock["rustArchive"]["url"] or
+            rust_ini.get("rust", "sha256") != lock["rustArchive"]["sha256"]):
+        raise RuntimeError("Adapted Rust resource differs from source lock")
     # Download quarantine is an OS security boundary, not a Google service.
     # Keep Chromium's original source and its quarantine service dependency.
     series = recipe / "ungoogled-chromium/patches/series"
@@ -321,6 +368,11 @@ def create_recipe(work, lock):
     if lines.count(patch) != 1:
         raise RuntimeError("Upstream quarantine patch selection changed")
     series.write_text("\n".join(line for line in lines if line != patch) + "\n")
+    # Keep the audit outside copied recipe sources. No archive is downloaded or
+    # Chromium patch applied before this exact recipe adaptation succeeds.
+    with (work / "macos-recipe-compatibility.json").open("x") as stream:
+        json.dump(record, stream, indent=2, sort_keys=True)
+        stream.write("\n")
     return recipe
 
 
@@ -376,7 +428,7 @@ def prepare(work, lock):
     stage("patch", lambda: run(sys.executable, main / "utils/patches.py", "apply", src, main / "patches", recipe / "patches"))
     stage("domains", lambda: run(sys.executable, main / "utils/domain_substitution.py", "apply", "-r", main / "domain_regex.list", "-f", main / "domain_substitution.list", src))
     stage("enterprise-profile-compatibility", lambda: enterprise_profile_compatibility(src))
-    stage("platform", lambda: run(sys.executable, recipe / "retrieve_and_unpack_resource.py", "-p", "arm64"))
+    stage("platform", lambda: macos_platform_compatibility(recipe, lock))
     stage("compatible-linker", lambda: compatibility_linker(src, lock))
     stage("branding", lambda: brand_source(src))
     stage("native-passwords", lambda: run(sys.executable, ROOT / "scripts/native_overlay.py", src))
@@ -409,6 +461,9 @@ def build(work, lock, jobs):
     # A prepared-state label alone cannot attest that the mandatory completion
     # hook and copied native guard still match the reviewed repository inputs.
     run(sys.executable, ROOT / "scripts/malware_overlay.py", src, "--verify-applied")
+    # Missing bindgen or Crubit is a failed official-toolchain verification.
+    # Never substitute a local build using the obsolete platform helper.
+    verify_macos_platform(recipe, lock)
     built_args = digest(args_path)
     build_inputs = input_digest()
     receipt_spec = importlib.util.spec_from_file_location("_kumo_completed_build", ROOT / "scripts/build_receipt.py")
@@ -440,9 +495,6 @@ def build(work, lock, jobs):
     gn = src / "out/Default/gn"
     if not gn.is_file():
         run(sys.executable, src / "tools/gn/bootstrap/bootstrap.py", "-o", gn, "--skip-generate-buildfiles", cwd=src, env=env)
-    if not (src / "third_party/rust-toolchain/bin/bindgen").is_file():
-        run(sys.executable, src / "tools/rust/build_bindgen.py", "--skip-test", cwd=src,
-            env=bindgen_environment(src, env))
     run(gn, "gen", "out/Default", "--fail-on-unused-args", cwd=src, env=env)
     if digest(args_path) != built_args:
         raise RuntimeError("Locked GN arguments changed during generation; no browser compilation started")
@@ -456,6 +508,7 @@ def build(work, lock, jobs):
     if input_digest() != build_inputs or digest(args_path) != built_args:
         raise RuntimeError("Source inputs or GN arguments changed during compilation; no completed-build receipt recorded")
     compatibility_linker(src, lock, verify_only=True)
+    verify_macos_platform(recipe, lock)
     run(sys.executable, ROOT / "scripts/malware_overlay.py", src, "--verify-applied")
     receipt.record_build(app, ROOT, build_inputs, args_path)
     print(f"Compiled and locally signed engine: {app}")
@@ -520,7 +573,7 @@ def main():
     if args.dry_run:
         print(f"Pinned Chromium {lock['chromiumVersion']} / mac packaging {lock['macosPackaging']['commit']}\nWorkspace: {work}")
         print("prepare: verify pinned checkouts; copy isolated recipe; download+verify locked archive; prune; apply both patch stacks; domain substitution; download+verify arm64 tools and immutable SDK-compatible linker; brand Kumo; restore Store isolation + FedCM; add native Passwords, anonymous signed Store updates, and malware download completion gate; write GN args")
-        print(f"build: GN bootstrap; Rust bindgen; gn gen --fail-on-unused-args; ninja -C out/Default -j {args.jobs} chrome; upstream ad-hoc signing")
+        print(f"build: verify official toolchains including prebuilt bindgen/Crubit; GN bootstrap; gn gen --fail-on-unused-args; ninja -C out/Default -j {args.jobs} chrome; upstream ad-hoc signing")
         print(f"package: python3 scripts/package.py --engine-app {work / 'recipe/build/src' / lock['engineBundle']}")
         print("No commands executed. Safe Browsing is unavailable in this source base; native Apple Passwords source integration requires compilation and runtime validation.")
         return
