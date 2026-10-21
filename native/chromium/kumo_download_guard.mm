@@ -93,6 +93,7 @@ bool WithinDeadline(const ScanInput& input, const ScanControl& control) {
          base::TimeTicks::Now() < input.deadline;
 }
 
+// BEGIN KUMO_METADATA_RETRY_POLICY
 bool SameFile(const struct stat& a, const struct stat& b) {
   return S_ISREG(a.st_mode) && S_ISREG(b.st_mode) && a.st_dev == b.st_dev &&
          a.st_ino == b.st_ino && a.st_size == b.st_size && a.st_uid == b.st_uid &&
@@ -102,6 +103,64 @@ bool SameFile(const struct stat& a, const struct stat& b) {
          a.st_ctimespec.tv_sec == b.st_ctimespec.tv_sec &&
          a.st_ctimespec.tv_nsec == b.st_ctimespec.tv_nsec;
 }
+
+// OS metadata can update ctime while a completed download is held for scanning.
+// Never release such a generation directly: only an otherwise identical file
+// may receive one fresh snapshot and complete scan within the original budget.
+bool SameMetadataExceptChangeTime(const struct stat& a, const struct stat& b) {
+  return S_ISREG(a.st_mode) && S_ISREG(b.st_mode) && a.st_dev == b.st_dev &&
+         a.st_ino == b.st_ino && a.st_uid == b.st_uid && a.st_gid == b.st_gid &&
+         a.st_mode == b.st_mode && a.st_flags == b.st_flags &&
+         a.st_nlink == 1 && b.st_nlink == 1 && a.st_size == b.st_size &&
+         a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec &&
+         a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec;
+}
+
+bool AtMetadataRetryBaseline(const struct stat& baseline,
+                             const struct stat& descriptor,
+                             const struct stat& named) {
+  return SameFile(baseline, descriptor) && SameFile(baseline, named) &&
+         SameMetadataExceptChangeTime(baseline, descriptor) &&
+         SameMetadataExceptChangeTime(baseline, named);
+}
+
+enum class ScanAttemptDisposition { kReject, kClean, kInfected, kRetryMetadata };
+
+ScanAttemptDisposition ClassifyScanAttempt(
+    const std::string& verdict,
+    bool exact_content,
+    bool active,
+    const struct stat& before,
+    const struct stat& after,
+    const struct stat& named_after) {
+  if (!exact_content || !active)
+    return ScanAttemptDisposition::kReject;
+  if (SameFile(before, after) && SameFile(before, named_after)) {
+    if (verdict == "no-known-malware")
+      return ScanAttemptDisposition::kClean;
+    return verdict == "malware" ? ScanAttemptDisposition::kInfected
+                                : ScanAttemptDisposition::kReject;
+  }
+  if (verdict != "no-known-malware" ||
+      !SameMetadataExceptChangeTime(before, after) ||
+      !SameMetadataExceptChangeTime(before, named_after) ||
+      !AtMetadataRetryBaseline(after, after, named_after)) {
+    return ScanAttemptDisposition::kReject;
+  }
+  return ScanAttemptDisposition::kRetryMetadata;
+}
+
+template <typename Attempt>
+ScanAttemptDisposition RunBoundedMetadataScan(Attempt attempt) {
+  auto disposition = attempt(false);
+  if (disposition != ScanAttemptDisposition::kRetryMetadata)
+    return disposition;
+  disposition = attempt(true);
+  return disposition == ScanAttemptDisposition::kRetryMetadata
+             ? ScanAttemptDisposition::kReject
+             : disposition;
+}
+// END KUMO_METADATA_RETRY_POLICY
 
 std::optional<std::string> HashDescriptor(int descriptor,
                                          const ScanInput& input,
@@ -384,55 +443,87 @@ ScanResult ScanFile(ScanInput input, std::shared_ptr<ScanControl> control) {
     return result;
   base::ScopedFD descriptor(HANDLE_EINTR(open(input.path.value().c_str(),
                                              O_RDONLY | O_NOFOLLOW | O_CLOEXEC)));
-  struct stat before;
-  struct stat named;
-  if (!descriptor.is_valid() || fstat(descriptor.get(), &before) != 0 ||
-      lstat(input.path.value().c_str(), &named) != 0 || !SameFile(before, named) ||
-      before.st_uid != getuid() || before.st_size != input.bytes)
+  if (!descriptor.is_valid())
     return result;
-  std::optional<PrivateSnapshot> snapshot =
-      MakePrivateSnapshot(descriptor.get(), input, *control);
-  if (!snapshot || (!input.browser_hash.empty() && snapshot->sha256 != input.browser_hash))
-    return result;
-  result.sha256 = snapshot->sha256;
-  std::optional<base::FilePath> executable = VerifiedHelperPath();
-  if (!executable || !WithinDeadline(input, *control))
-    return result;
-  base::DictValue request;
-  request.Set("version", 1);
-  request.Set("requestId", input.guid);
-  request.Set("bytes", static_cast<int>(input.bytes));
-  request.Set("sha256", snapshot->sha256);
-  std::string encoded;
-  if (!base::JSONWriter::Write(request, &encoded))
-    return result;
-  encoded.push_back('\n');
-  std::optional<std::string> output =
-      RunHelper(*executable, snapshot->descriptor.get(), encoded, input, *control);
-  if (!output || output->empty() || output->back() != '\n' ||
-      output->find('\n') != output->size() - 1)
-    return result;
-  auto reply = base::JSONReader::ReadDict(*output, base::JSON_PARSE_RFC, 4);
-  if (!reply || reply->size() != 6 || reply->FindInt("version") != 1 ||
-      !reply->FindString("requestId") || *reply->FindString("requestId") != input.guid ||
-      !reply->FindString("sha256") || *reply->FindString("sha256") != snapshot->sha256 ||
-      reply->FindInt("bytes") != input.bytes ||
-      !reply->FindString("reason") || reply->FindString("reason")->size() > 512)
-    return result;
-  const std::string* verdict = reply->FindString("verdict");
-  if (!verdict || (*verdict != "no-known-malware" && *verdict != "malware" &&
-                   *verdict != "unavailable" && *verdict != "limited"))
-    return result;
-  struct stat after;
-  struct stat named_after;
-  std::optional<std::string> after_digest = HashDescriptor(descriptor.get(), input, *control);
-  if (!after_digest || *after_digest != snapshot->sha256 ||
-      fstat(descriptor.get(), &after) != 0 || !SameFile(before, after) ||
-      lstat(input.path.value().c_str(), &named_after) != 0 ||
-      !SameFile(before, named_after) || !WithinDeadline(input, *control))
-    return result;
-  result.clean = *verdict == "no-known-malware";
-  result.infected = *verdict == "malware";
+  std::optional<struct stat> retry_baseline;
+  const auto disposition = RunBoundedMetadataScan([&](bool retry) {
+    struct stat before;
+    struct stat named;
+    if (!WithinDeadline(input, *control) ||
+        fstat(descriptor.get(), &before) != 0 ||
+        lstat(input.path.value().c_str(), &named) != 0 ||
+        !AtMetadataRetryBaseline(before, before, named) ||
+        before.st_uid != getuid() || before.st_size != input.bytes ||
+        (retry && (!retry_baseline ||
+                   !AtMetadataRetryBaseline(*retry_baseline, before, named)))) {
+      return ScanAttemptDisposition::kReject;
+    }
+    std::optional<PrivateSnapshot> snapshot =
+        MakePrivateSnapshot(descriptor.get(), input, *control);
+    if (!snapshot || (!input.browser_hash.empty() &&
+                      snapshot->sha256 != input.browser_hash)) {
+      return ScanAttemptDisposition::kReject;
+    }
+    result.sha256 = snapshot->sha256;
+    std::optional<base::FilePath> executable = VerifiedHelperPath();
+    struct stat before_helper;
+    struct stat named_before_helper;
+    if (!executable || !WithinDeadline(input, *control) ||
+        fstat(descriptor.get(), &before_helper) != 0 ||
+        lstat(input.path.value().c_str(), &named_before_helper) != 0 ||
+        !AtMetadataRetryBaseline(before, before_helper, named_before_helper)) {
+      return ScanAttemptDisposition::kReject;
+    }
+    base::DictValue request;
+    request.Set("version", 1);
+    request.Set("requestId", input.guid);
+    request.Set("bytes", static_cast<int>(input.bytes));
+    request.Set("sha256", snapshot->sha256);
+    std::string encoded;
+    if (!base::JSONWriter::Write(request, &encoded))
+      return ScanAttemptDisposition::kReject;
+    encoded.push_back('\n');
+    std::optional<std::string> output =
+        RunHelper(*executable, snapshot->descriptor.get(), encoded, input, *control);
+    if (!output || output->empty() || output->back() != '\n' ||
+        output->find('\n') != output->size() - 1) {
+      return ScanAttemptDisposition::kReject;
+    }
+    auto reply = base::JSONReader::ReadDict(*output, base::JSON_PARSE_RFC, 4);
+    if (!reply || reply->size() != 6 || reply->FindInt("version") != 1 ||
+        !reply->FindString("requestId") ||
+        *reply->FindString("requestId") != input.guid ||
+        !reply->FindString("sha256") ||
+        *reply->FindString("sha256") != snapshot->sha256 ||
+        reply->FindInt("bytes") != input.bytes ||
+        !reply->FindString("reason") || reply->FindString("reason")->size() > 512) {
+      return ScanAttemptDisposition::kReject;
+    }
+    const std::string* verdict = reply->FindString("verdict");
+    if (!verdict || (*verdict != "no-known-malware" && *verdict != "malware" &&
+                     *verdict != "unavailable" && *verdict != "limited")) {
+      return ScanAttemptDisposition::kReject;
+    }
+    struct stat after;
+    struct stat named_after;
+    std::optional<std::string> after_digest =
+        HashDescriptor(descriptor.get(), input, *control);
+    if (fstat(descriptor.get(), &after) != 0 ||
+        lstat(input.path.value().c_str(), &named_after) != 0) {
+      return ScanAttemptDisposition::kReject;
+    }
+    const bool exact_content =
+        after_digest && *after_digest == snapshot->sha256 &&
+        (input.browser_hash.empty() || *after_digest == input.browser_hash);
+    const auto attempt_disposition = ClassifyScanAttempt(
+        *verdict, exact_content, WithinDeadline(input, *control), before, after,
+        named_after);
+    if (attempt_disposition == ScanAttemptDisposition::kRetryMetadata)
+      retry_baseline = after;
+    return attempt_disposition;
+  });
+  result.clean = disposition == ScanAttemptDisposition::kClean;
+  result.infected = disposition == ScanAttemptDisposition::kInfected;
   return result;
 }
 
