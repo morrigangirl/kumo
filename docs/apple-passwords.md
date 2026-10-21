@@ -2,7 +2,7 @@
 
 ## Current source and release status
 
-The pending Kumo **0.1.2, build 202610210003** removes the built-in Apple Passwords integration: the native fill command and sheet, settings/help panel, unwired session-pairing components, and standalone SDK probes. The unpublished 202610210002 candidate is superseded. The replacement requires a new completed source build, validation, signing and notarization; these are not established by the earlier candidate's Apple acceptance.
+[Kumo **0.1.2, build 202610210003**](https://github.com/morrigangirl/kumo/releases/tag/v0.1.2-202610210003) was published on October 21, 2026. It removes the built-in Apple Passwords integration: the native fill command and sheet, settings/help panel, unwired session-pairing components, and standalone SDK probes. Its fresh completed source build, signed runtime checks, Developer ID signing, Apple notarization and public update verification passed. See [production release validation](security-audits/2026-10-21/0.1.2-production-release.md). The unpublished 202610210002 candidate remains superseded.
 
 Chromium's ordinary extension APIs and Native Messaging remain available for password tools. No custom extension or installed browser profile is changed by this removal. Password extensions retain their own native-helper, account-selection and authentication requirements. Installing one does not establish that Apple's helper accepts Kumo, and the owner's custom plugin has not been qualified against the replacement build.
 
@@ -10,7 +10,7 @@ Chromium WebAuthn, passkeys and security-key support remain separate from the re
 
 ## Historical implementation and validation
 
-The following records describe removed experiments and earlier builds, not features or instructions for the pending release.
+The following records describe removed experiments and earlier builds, rather than features or instructions for Kumo 0.1.2.
 
 The former AppKit sheet displayed a canonical HTTPS destination and a real semantic username or secure-password field. The person could invoke macOS AutoFill → Passwords, choose an account and explicitly press Fill. Its browser adapter bound the result to the original renderer field, document and origin and cancelled on navigation, tab hiding or closure. It did not provide Safari-style inline website account suggestions.
 

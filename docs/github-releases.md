@@ -22,7 +22,7 @@ signing key already exists in the build Mac's login Keychain under
 [`config/release.json`](../config/release.json). The release tools do not export
 private keys or accept private keys as command arguments.
 
-The update channel is live with [Kumo 0.1.0, build 202610190001](https://github.com/morrigangirl/kumo/releases/tag/v0.1.0-202610190001), published on October 20, 2026. Apple accepted the Carson Press LLC Developer ID-signed app; its stapled ticket, Gatekeeper assessment and all nested signatures passed verification. The public appcast was fetched anonymously and its Sparkle signature verified. Production builds have update checks enabled; Apple Development builds remain disabled. See [production release validation](security-audits/2026-10-20/production-release.md) and [production signing](signing.md).
+The latest stable release is [Kumo 0.1.2, build 202610210003](https://github.com/morrigangirl/kumo/releases/tag/v0.1.2-202610210003), published on October 21, 2026. Apple accepted the Carson Press LLC Developer ID-signed app; its stapled ticket, Gatekeeper assessment and all 26 native code signatures passed verification. The publisher verified the Sparkle archive/feed signatures and downloaded draft assets. Independent anonymous checks then matched all five published asset sizes/digests and fetched the exact signed appcast bytes. Production builds have update checks enabled; Apple Development builds remain disabled. See [0.1.2 production validation](security-audits/2026-10-21/0.1.2-production-release.md) and [production signing](signing.md).
 
 The first public binary excluded PhishLang. Kumo 0.1.1 and later bundle
 the experimental checkpoint and its native inference helper, with warnings off
@@ -50,11 +50,13 @@ An old release with an unknown tag shape stops publishing for explicit
 reconciliation rather than silently assuming its version.
 
 Update `docs/releases/<version>.md`, then tag the exact reviewed commit and push
-that tag. For the current configured version:
+that tag. The examples below show the published 0.1.2 tuple. For a future release,
+use its newly increased build and reviewed source commit; never recreate or
+retarget a published tag.
 
 ```sh
-git tag -a v0.1.1-202610200002 -m 'Kumo 0.1.1'
-git push origin v0.1.1-202610200002
+git tag -a v0.1.2-202610210003 -m 'Kumo 0.1.2'
+git push origin v0.1.2-202610210003
 ```
 
 Prepare the pinned tools and data, finish the locked source build and package
@@ -67,15 +69,15 @@ python3 scripts/prepare-sparkle.py
 python3 scripts/prepare-release-vendor.py
 python3 scripts/prepare-malware-feed.py
 /usr/bin/python3 scripts/prepare-phishlang.py
-scripts/build-source.sh build --work-dir build/release-source-0.1.1-202610200002
+scripts/build-source.sh build --work-dir build/release-source-0.1.2-202610210003
 python3 scripts/package.py \
-  --engine-app build/release-source-0.1.1-202610200002/recipe/build/src/out/Default/Chromium.app
+  --engine-app build/release-source-0.1.2-202610210003/recipe/build/src/out/Default/Chromium.app
 
 python3 scripts/github-release.py doctor
 python3 scripts/github-release.py prepare \
   --app dist/Kumo.app \
-  --output dist/github-releases/v0.1.1-202610200002 \
-  --notes docs/releases/0.1.1.md \
+  --output dist/github-releases/v0.1.2-202610210003 \
+  --notes docs/releases/0.1.2.md \
   --identity 'THE_40_CHARACTER_DEVELOPER_ID_SHA1' \
   --notary-profile 'EXISTING_NOTARYTOOL_KEYCHAIN_PROFILE'
 ```
@@ -119,10 +121,10 @@ Uploading defaults to a **draft**:
 
 ```sh
 python3 scripts/github-release.py verify \
-  --artifacts dist/github-releases/v0.1.1-202610200002
+  --artifacts dist/github-releases/v0.1.2-202610210003
 
 python3 scripts/github-release.py upload \
-  --artifacts dist/github-releases/v0.1.1-202610200002
+  --artifacts dist/github-releases/v0.1.2-202610210003
 ```
 
 The tool requires the exact source tag, checks all release build counters,
@@ -133,7 +135,7 @@ this tool. Review the draft, then make it public and latest:
 
 ```sh
 python3 scripts/github-release.py upload \
-  --artifacts dist/github-releases/v0.1.1-202610200002 \
+  --artifacts dist/github-releases/v0.1.2-202610210003 \
   --publish
 ```
 
