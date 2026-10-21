@@ -1,22 +1,30 @@
 # Building Kumo from Chromium source
 
-The source lock targets **156.0.8078.47** for Kumo 0.1.1. Chrome's [October 20 stable update](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html) superseded the earlier 155-based candidate during release preparation. This local macOS compatibility port completed its full source build and 19 candidate runtime checks on October 21. A changed lock alone does not upgrade an installed app; production distribution additionally requires Developer ID signing, Apple notarization and verified signed release assets.
+The source lock targets **156.0.8078.47** for Kumo 0.1.1. Chrome's [October 20 stable update](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html) superseded the earlier 155-based candidate during release preparation. Replacement build `202610210001` completed its normal incremental source build, packaging and all 19 candidate runtime groups on October 21. The earlier `202610200002` stage remains preserved after its signed-stage download failures. Production distribution additionally requires Developer ID signing, Apple notarization and verified signed release assets.
 
 The first published, notarized Kumo 0.1.0 and preserved local `dist/Kumo.app` use **155.0.8059.84**. That app remains the upgrade-test baseline. The earlier checksum-verified upstream **155.0.8059.39** preview and the following .84 development-build evidence are historical. The .84 engine was built locally; it is not an upstream macOS .84 binary.
 
-## Completed 156 build and candidate
+## Completed replacement 156 build
 
-The normal four-worker build in `build/source-156.0.8078.47-final002` completed all 57,485 Ninja actions, framework linking, library verification, upstream signing and engine packaging. The completed receipt was written at `2026-10-21T05:57:08Z`; raw engine hashes were checked against the completed receipt during packaging and independently rechecked afterward.
+Build `202610210001` uses `build/source-156.0.8078.47-final003`, an APFS copy-on-write clone of the completed `final002` workspace with independent writable file inodes. Reviewed one-file amendments changed only the native download guard among the frozen engine inputs. The original workspace, completed receipt and raw engine remain unchanged. The first amendment's build was interrupted during framework linking after review found an original-byte consistency gap; it produced no completed receipt. A second amendment unconditionally binds retry snapshots to the first snapshot's SHA-256, including when Chromium supplies no hash.
+
+The final normal four-worker build regenerated GN, recompiled the changed Objective-C++ guard, relinked the framework, verified its libraries, ran upstream ad-hoc signing and DMG packaging, and repeated the pinned-tool and source-integrity checks. It reused unchanged compiled inputs; it did not rebuild all 57,485 actions from the earlier full build. Its actual completed receipt was written at `2026-10-21T07:18:57Z`:
 
 ```text
-sourceInputsSHA256:   055d5b05d56eaf76f72f8a51f6823d1ceef5a7704b2153cbf0807a90969f7cc3
+sourceInputsSHA256:   e6725469a395d3ad7d4c4638d02b377397c65bf2f396fb4f2f72ffff9313db99
 sourceLockSHA256:     778b67e7588458c2dc4036c3e8addc71b573fd363087bc244e8bff42b6e14bca
-embeddedReceiptSHA:   005d5708f39502c4b541b42927ecec1e1d65d63f5634944708b20de9676f1e87
-engineMachOSHA256:    f9174f758982a145b7d21bd5d8be29fbb4c89cec8b58b94c691a87ba16d8bbe0
-frameworkMachOSHA256: 490d7e6c7ef96e05c3a827ad44e2f4142e17f36fb76c613a911c0c1b49babf81
+embeddedReceiptSHA:   0de4bed0904ae4f529097ba3e92c141dea25f301a3e6f9448d6765f9ea129a44
+engineMachOSHA256:    a40d5952ef194a26d03de89784dd1cc3d1c6c322f636658a219d0ca738164cdd
+frameworkMachOSHA256: 7f0429b57ff071f366bcbcf93b976ab4858b911c608335430bf7ae682718be12
 ```
 
-The separate candidate is `dist/release-candidate-0.1.1-202610200002/Kumo.app`; it includes the optional PhishLang model and citation. Its receipt, metadata, model resources, sandboxed helper and development signatures passed identity verification. All 19 isolated browser/security checks passed, including actual 155→156 synthetic profile migration, both native and DevTools download-scanning paths, model inference, agents, Store protections, TLS and bounded startup privacy. The current compiler/linker also passed the focused 13-command mixed-language unwind fixture. See [candidate validation and limits](security-audits/2026-10-21/0.1.1-candidate.md). These checks are distinct from final Developer ID signing and notarization.
+Independent review recomputed all four raw artifact hashes and the actual receipt, verified the unchanged source lock/GN arguments and chained amendments, and matched all 14 main and 42 framework section descriptors to the packaged candidate. All file-backed section bytes matched; zero-fill descriptors also matched. The candidate is `dist/release-candidate-0.1.1-202610210001/Kumo.app`; its exact receipt, metadata, model/attribution and strict local signatures passed identity verification. Its new 19-group runtime sequence completed at `2026-10-21T07:27:29Z`, with every check exiting zero and all six download cases passing on each native and CDP path. The extracted native retry policy passed 13 functional scenarios, its unchanged strict-comparator check passed, and all 47 existing native/source/receipt regressions passed. Signed-stage metadata fault injection and final production qualification remain pending. See [candidate validation and limits](security-audits/2026-10-21/0.1.1-candidate.md).
+
+### Preserved prior 156 candidate
+
+The normal full build in `build/source-156.0.8078.47-final002` completed all 57,485 Ninja actions and issued its receipt at `2026-10-21T05:57:08Z`, with input fingerprint `055d5b05d56eaf76f72f8a51f6823d1ceef5a7704b2153cbf0807a90969f7cc3` and embedded receipt `005d5708f39502c4b541b42927ecec1e1d65d63f5634944708b20de9676f1e87`. Its development candidate passed identity verification and all 19 isolated browser/security groups, including profile migration, downloads, phishing inference, agents, Store protection, TLS and bounded startup privacy. The current compiler/linker also passed the focused 13-command mixed-language unwind fixture.
+
+The later Developer ID-signed `202610200002` stage passed its normal native download cases but failed benign CDP downloads after metadata changed during scanning. It is preserved and will not be published. Those results prompted the bounded full-rescan correction in the replacement; they do not qualify the new candidate's runtime behavior.
 
 ## Historical 155 build evidence
 
@@ -48,7 +56,7 @@ The preferred wrapper chooses a versioned workspace from the current lock: `buil
 build/source-156.0.8078.47/recipe/build/src/out/Default/Chromium.app
 ```
 
-The initial local 156 workspace completed preparation, three native-context-menu tests, GN bootstrap and target generation, then Ninja stopped before browser compilation on the missing native TypeScript package. Its source, state and logs remain unchanged. The successful corrected build uses `--work-dir build/source-156.0.8078.47-final002`; pass that same explicit workspace when reusing its completed engine on this machine. A changed input fingerprint requires a fresh workspace, rather than relabeling the failed preparation.
+The initial local 156 workspace completed preparation, three native-context-menu tests, GN bootstrap and target generation, then Ninja stopped before browser compilation on the missing native TypeScript package. Its source, state and logs remain unchanged. The original completed build remains in `build/source-156.0.8078.47-final002`; the reviewed replacement uses `--work-dir build/source-156.0.8078.47-final003`. Use that explicit workspace when reusing the replacement engine. A changed input fingerprint requires a fresh workspace or an explicit audited amendment, rather than relabeling a failed preparation.
 
 `config/chromium.gn` overrides upstream GN assignments without duplicate definitions. Its first-build defaults disable PGO and ThinLTO, omit debug symbols, use four compile jobs, and retain the sandbox and ordinary TLS behavior. `use_lld=true` and `lld_path` select the separately verified LLVM 23.1.3 linker: the original pinned LLD rejects SDK 27’s new `arm64e.x1` TAPI targets, while the interim Apple linker hit its compact-unwind personality limit. `use_icf=false` retains the prior no-deduplication behavior and ThinLTO remains disabled. The new linker preserves existing DWARF fallback metadata rather than removing exception personalities. Both the 155 and corrected 156 engines linked successfully. The current focused unwind fixture additionally checked real C++/Objective-C/Rust cleanup and fresh personality/CIE/FDE/LSDA metadata, without claiming full-browser ABI coverage. The configuration does not add sandbox, certificate, remote-debugging, or TLS bypass switches. The upstream FFmpeg codec and Widevine build settings are inherited; these settings do not provide a Widevine CDM binary or establish media-service support.
 
@@ -117,7 +125,7 @@ scripts/build-source.sh package --jobs 4
 After a successful build, the equivalent explicit packaging command is:
 
 ```sh
-python3 scripts/package.py --engine-app build/source-156.0.8078.47/recipe/build/src/out/Default/Chromium.app
+python3 scripts/package.py --engine-app build/source-156.0.8078.47-final003/recipe/build/src/out/Default/Chromium.app
 ```
 
 Source packaging requires that completed-build receipt and matching raw output bytes; supplying an arbitrary app path is not proof of a local build. The receipt guards accidental stale or mismatched inputs, rather than providing attestation against someone who can edit the workspace itself. If Xcode or its SDK changes, rebuild the locally bootstrapped GN helper and review the prepared toolchain before running the normal driver again; bootstrap SDK environment changes are not necessarily part of Ninja's cached command hashes. Missing official bindgen or Crubit tools stop the build rather than triggering an external-toolchain rebuild.

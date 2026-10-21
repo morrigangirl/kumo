@@ -1,10 +1,10 @@
 # Chromium 156 release preparation
 
-Status: the compatibility port completed its normal source build and candidate runtime qualification on October 21. This audit covers candidate validation; production signing, notarization and published assets are separate release records.
+Status: the compatibility port completed its original full source build and candidate runtime qualification on October 21. Replacement build `202610210001` completed its reviewed incremental build, raw receipt verification and all 19 new candidate runtime groups. Production signing, notarization and published assets are separate release records.
 
 The final prepublication check found Chrome's [October 20 desktop stable update](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html), published after the earlier check. It announces 156.0.8078.47/.48 and 353 security fixes across platforms. That total is not a count of independently confirmed Kumo/macOS vulnerabilities. Google's [CNA record for CVE-2026-113279](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/113xxx/CVE-2026-113279.json) describes critical Accessibility memory corruption before 156.0.8078.47, potentially allowing execution inside the sandbox. It does not describe a sandbox escape or restrict the issue to another platform.
 
-Kumo held the signed, unsubmitted 155-based 0.1.1 candidate and began a separate 156 source workspace. The working default-Keychain notarization profile is available; no credential-restoration step is outstanding. Existing 0.1.0 release assets and the earlier candidate remain preserved.
+Kumo held the signed, unsubmitted 155-based 0.1.1 candidate and began a separate 156 source workspace. The notarization profile was available during that earlier preparation. The latest default-Keychain lookup for `Kumo Notary` now exits 69 because the profile is missing; restoration is required before submitting the replacement build. Existing 0.1.0 release assets and the earlier candidate remain preserved.
 
 ## Pinned inputs
 
@@ -51,8 +51,18 @@ The development-signed Kumo 0.1.1 / `202610200002` candidate passed its identity
 
 A fresh official release check on October 21 at 04:53–04:54 UTC found no newer macOS stable implementation release: `.48` is a direct child of `.47` changing only `chrome/VERSION`. The announcement's six Critical entries include an explicitly Android-only Skia issue; they must not be described as six confirmed macOS Critical vulnerabilities. All six Chrome CNA records still give the pre-`.47` affected boundary.
 
+## Replacement download-guard build
+
+The preserved Developer ID-signed `202610200002` stage later blocked benign CDP downloads after ctime-only changes during scanning. Its normal native cases passed, and no unsafe completion was observed. The metadata writer was not established. The held stage is not the replacement release.
+
+An independent APFS clone in `build/source-156.0.8078.47-final003` reused the completed source and compiled outputs. Two reviewed one-file amendments retain strict original-file checks, allow at most one fresh full scan after otherwise identical metadata changes, and unconditionally bind both snapshots to the first SHA-256. The first amendment's build was interrupted before any completed receipt to close the original-byte binding gap; its state, guard and log are preserved.
+
+The final normal four-worker build recompiled the guard, relinked the framework, verified libraries, ran upstream signing/DMG packaging and final pinned-tool/source checks. Its actual receipt records `2026-10-21T07:18:57Z`, source inputs `e6725469a395d3ad7d4c4638d02b377397c65bf2f396fb4f2f72ffff9313db99` and embedded digest `0de4bed0904ae4f529097ba3e92c141dea25f301a3e6f9448d6765f9ea129a44`. This was an incremental build, not another full 57,485-action compilation. Independent review matched the raw artifact hashes and all 56 packaged engine/framework section descriptors and file-backed bytes. The original `final002` state, receipt, guard and whole Mach-O bytes remain unchanged.
+
+The extracted retry policy passed 13 functional scenarios plus its strict-comparator check; all 47 existing native/source/receipt checks also passed. All 19 new candidate runtime groups completed at `2026-10-21T07:27:29Z` with zero exit codes, including the full six-case matrix on both native and CDP download paths. Signed-stage fault injection and production qualification remain pending. The prior 19-group candidate result is preserved as historical evidence.
+
 ## Production boundary
 
 Candidate validation does not attest a production signature or notarization. Production distribution requires final Developer ID signing, exact-archive Apple acceptance, stapling, Gatekeeper verification and signed GitHub release assets. The final app must retain the PhishLang citation, license link and modification notices before its model is uploaded or distributed. Release assets record the final production identity separately.
 
-Local evidence is preserved under `.cache/qa/chromium-156-security-2026-10-20/`, `.cache/qa/chromium-156-security-2026-10-21/`, `.cache/qa/chromium-156-release-2026-10-20/` and `.cache/qa/phishlang-release-2026-10-20/`. These generated directories are excluded from Git.
+Local evidence is preserved under `.cache/qa/chromium-156-security-2026-10-20/`, `.cache/qa/chromium-156-security-2026-10-21/`, `.cache/qa/chromium-156-release-2026-10-20/`, `.cache/qa/chromium-156-release-2026-10-21/` and `.cache/qa/phishlang-release-2026-10-20/`. These generated directories are excluded from Git.
