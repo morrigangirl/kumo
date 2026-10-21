@@ -88,14 +88,14 @@ def doctor(lock, strict=True):
     if sys.version_info < (3, 10):
         errors.append("Python 3.10+ is required.")
     print(f"Python: {platform.python_version()}")
-    for name in ("git", "patch", "ninja", "node", "npm", "go", "esbuild", "tsc",
+    for name in ("git", "patch", "ninja", "node", "npm", "go", "esbuild",
                  "greadlink", "perl", "codesign", "xcodebuild", "xcrun", "zstd"):
         found = shutil.which(name)
         print(f"{name}: {found or 'MISSING'}")
         if not found:
             errors.append(f"Missing build tool: {name}")
-    # The pinned platform patches use these exact Homebrew paths.
-    for path in ("/opt/homebrew/bin/esbuild", "/opt/homebrew/bin/tsc"):
+    # TypeScript comes from the locked Chromium package; esbuild remains external.
+    for path in ("/opt/homebrew/bin/esbuild",):
         if not Path(path).is_file():
             errors.append(f"Pinned upstream patches require {path}.")
     if shutil.which("xcrun"):

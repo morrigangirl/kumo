@@ -8,15 +8,20 @@ fallbacks for the former external LLVM/Rust distribution.
 """
 from __future__ import annotations
 
+import ctypes
 import hashlib
+import json
 import os
 from pathlib import Path, PurePosixPath
 import posixpath
+import re
+import shutil
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import zipfile
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
@@ -34,7 +39,7 @@ _RETAINED = (
     "disable-crashpad-handler.patch", "disable-symbol-order-verification.patch",
     "fix-disabling-safebrowsing.patch", "fix-dsymutil.patch",
     "fix-nasm-build-config.patch", "use-system-python.patch", "fix-esbuild.patch",
-    "fix-typescript.patch", "fix-typescript-isolated-declarations.patch",
+    "fix-typescript-isolated-declarations.patch",
 )
 _RUST_REWIRING = '''    rust_name = f"{'aarch64' if host_arch == 'arm64' else 'x86_64'}-apple-darwin"
     rust_dir = SRC_DIR / "third_party" / "rust-toolchain"
@@ -92,7 +97,25 @@ _TOOLCHAINS = {'source': {'commit': '1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775',
                  'sha256': 'a1fb17260eda2971f52ed341501b93703b0fce69ffb43a179b891b66f6f63e5a',
                  'size': 3245456,
                  'generation': 1779297393605542,
-                 'outputPath': 'buildtools/mac_arm64-format/clang-format'}}
+                 'outputPath': 'buildtools/mac_arm64-format/clang-format'},
+ 'typescript': {'format': 'cipdZip',
+                'package': 'chromium/third_party/typescript/mac-arm64',
+                'version': 'version:2@7.0.2',
+                'instanceID': '63sEajfB6_MIU0PehstKopK1_P_yfUm21-o-zedkrz0C',
+                'url': 'https://chrome-infra-packages.appspot.com/dl/chromium/third_party/typescript/mac-arm64/+/63sEajfB6_MIU0PehstKopK1_P_yfUm21-o-zedkrz0C',
+                'sha256': 'eb7b046a37c1ebf3085343de86cb4aa292b5fcfff27d49b6d7ea3ecde764af3d',
+                'size': 9650018,
+                'generation': 1785474623781988,
+                'outputPath': 'third_party/typescript/mac-arm64/src',
+                'cacheName': 'typescript-7.0.2-mac-arm64-eb7b046a37c1ebf3085343de86cb4aa292b5fcfff27d49b6d7ea3ecde764af3d.zip',
+                'packageVersion': '7.0.2',
+                'memberCount': 118,
+                'unpackedSize': 27509796,
+                'sourceInputs': {'third_party/typescript/tsgo.gni': 'a62fb314e30f62e7b7ee4176a7d3eb78bbcf429f9f72ebe71f576b7bfcf7f4f6',
+                                 'third_party/typescript/typescript.py': '968a454eca00fa9514d33b72959d54c609a58a202519ba003eee5d4ff861ad55',
+                                 'third_party/devtools-frontend/src/scripts/build/typescript/typescript_vars.gni': '6e834d2ba894b4596fe3a425f220a8389bc0917bf73d13fb19206c4ef9c4b718',
+                                 'third_party/devtools-frontend/src/third_party/typescript/typescript.py': 'ef6417d77e1251888aeb356e2afffbd395e158b6ee06a13a59ca0788bebda636',
+                                 'ui/webui/webui_features.gni': 'da7bb41e65cb553d8d01d03c01f63fa172e71c430d70748e935e79c6def85e5c'}}}
 _NODE = {
     "url": "https://nodejs.org/dist/v24.12.0/node-v24.12.0-darwin-arm64.tar.xz",
     "sha512": "cd6b64563c73c4b482b557ab6715f513a1edde1fd05c33718d3bc0ab2361701b932953334c7fa07246f935dc5e36e74c10cb86d98ef59a6ac745b9f889e3bdcd",
@@ -237,7 +260,7 @@ def _adapted_hashes(tools):
 
 
 def adapt_recipe(recipe, lock):
-    """Select nine unchanged patches and exact matching official tool resources."""
+    """Select eight unchanged patches and exact matching official tool resources."""
     tools = _check_lock(lock)
     recipe = Path(recipe)
     try:
@@ -287,7 +310,8 @@ def _verify_recipe(recipe, tools):
 
 
 def _cache_name(key, item):
-    return ("clang-format-945e45cbcb5443c3e569d5e0783fd012154fc4a7" if key == "clangFormat"
+    return (item["cacheName"] if key == "typescript" else
+            "clang-format-945e45cbcb5443c3e569d5e0783fd012154fc4a7" if key == "clangFormat"
             else urlsplit(item["url"]).path.rsplit("/", 1)[-1])
 
 
@@ -303,7 +327,8 @@ def _ensure_cache(key, item):
             total = 0
             checksum = hashlib.sha256()
             with os.fdopen(descriptor, "wb") as handle, urlopen(
-                    item["url"] + "?generation=" + str(item["generation"]), timeout=60) as response:
+                    (item["url"] if item.get("format") == "cipdZip" else
+                     item["url"] + "?generation=" + str(item["generation"])), timeout=60) as response:
                 if (response.status != 200 or
                         int(response.headers.get("x-goog-generation", "0")) != item["generation"]):
                     raise RecipeCompatibilityError("Official resource generation differs")
@@ -456,11 +481,15 @@ def verify_platform(recipe, lock):
         for relative in ("lib/third_party/crubit/BUILD.gn", "lib/libclang.dylib"):
             descriptor = _open(rust / relative)
             os.close(descriptor)
+        records["typescript"] = _verify_typescript(src, ROOT / ".cache/source-downloads" /
+                                                   _cache_name("typescript", tools["typescript"]),
+                                                   tools["typescript"])
+        required.append(src / tools["typescript"]["outputPath"] / "lib/tsc")
         return {"chromiumVersion": VERSION, "officialToolchainSource": tools["source"],
                 "resources": records, "requiredTools": [str(p.relative_to(src)) for p in required],
                 "clangRevision": tools["clang"]["revision"], "rustVersion": _RUST_VERSION,
                 "prebuiltBindgen": True, "prebuiltCrubit": True}
-    except (OSError, tarfile.TarError) as error:
+    except (OSError, tarfile.TarError, zipfile.BadZipFile) as error:
         raise RecipeCompatibilityError("Cannot verify installed official platform resources") from error
 
 
@@ -482,7 +511,7 @@ def prepare_platform(recipe, lock):
         cache = recipe / "build/download_cache"
         if not cache.is_symlink() or cache.resolve(strict=True) != (ROOT / ".cache/source-downloads").resolve(strict=True):
             raise RecipeCompatibilityError("Recipe download cache points elsewhere")
-        for key in ("clang", "rust", "llvmObjdump", "clangFormat"):
+        for key in ("clang", "rust", "llvmObjdump", "clangFormat", "typescript"):
             _ensure_cache(key, tools[key])
         node_archive = ROOT / ".cache/source-downloads" / "node-v24.12.0-darwin-arm64.tar.xz"
         if os.path.lexists(node_archive) and _hash(node_archive, "sha512") != _NODE["sha512"]:
@@ -514,6 +543,186 @@ def prepare_platform(recipe, lock):
                 os.link(temporary, formatter)
             finally:
                 os.unlink(temporary)
+        _install_typescript(src, ROOT / ".cache/source-downloads" /
+                            _cache_name("typescript", tools["typescript"]), tools["typescript"])
         return verify_platform(recipe, lock)
-    except (OSError, subprocess.CalledProcessError) as error:
+    except (OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         raise RecipeCompatibilityError("Official platform preparation failed closed") from error
+
+
+def _typescript_sources(src, item):
+    for relative, expected in item["sourceInputs"].items():
+        if _hash(Path(src) / relative) != expected:
+            raise RecipeCompatibilityError("Original TypeScript source policy differs: " + relative)
+    deps = _read(Path(src) / "DEPS").decode()
+    declaration = ("'package': '" + item["package"] + "',\n"
+                   "              'version': '" + item["version"] + "'")
+    if deps.count(declaration) != 1:
+        raise RecipeCompatibilityError("Official DEPS TypeScript version differs")
+    text = _read(Path(src) / "third_party/typescript/tsgo.gni").decode()
+    libraries = re.findall(r'"(lib[^"/]*\.d\.ts)"', text)
+    if len(libraries) != 108 or len(set(libraries)) != 108:
+        raise RecipeCompatibilityError("Original TypeScript GN library inputs differ")
+    return {"lib/" + name for name in libraries} | {"lib/tsc"}
+
+
+def _zip_shape(contents, item):
+    infos = contents.infolist()
+    if len(infos) != item["memberCount"] or sum(i.file_size for i in infos) != item["unpackedSize"]:
+        raise RecipeCompatibilityError("Official TypeScript ZIP shape differs")
+    seen = set()
+    for info in infos:
+        parts = info.filename.split("/")
+        mode = info.external_attr >> 16
+        if (not info.filename or "\\" in info.filename or
+                any(p in ("", ".", "..") for p in parts) or
+                any(ord(c) < 32 or ord(c) > 126 for c in info.filename) or
+                info.orig_filename != info.filename or
+                PurePosixPath(info.filename).is_absolute() or info.filename in seen or
+                info.is_dir() or stat.S_IFMT(mode) != stat.S_IFREG or
+                stat.S_IMODE(mode) not in (0o400, 0o500) or info.flag_bits & 1 or
+                info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
+            raise RecipeCompatibilityError("Unsafe or duplicate TypeScript ZIP member")
+        seen.add(info.filename)
+    if any(str(parent) in seen for name in seen for parent in PurePosixPath(name).parents
+           if str(parent) != "."):
+        raise RecipeCompatibilityError("TypeScript ZIP file/directory collision")
+    for name in ("package.json", ".cipdpkg/manifest.json"):
+        if name not in seen or contents.getinfo(name).file_size > 16384:
+            raise RecipeCompatibilityError("Missing or oversized TypeScript metadata")
+    try:
+        package = json.loads(contents.read("package.json"))
+        manifest = json.loads(contents.read(".cipdpkg/manifest.json"))
+    except (ValueError, UnicodeError) as error:
+        raise RecipeCompatibilityError("Malformed TypeScript package metadata") from error
+    if (not isinstance(package, dict) or package.get("version") != item["packageVersion"] or
+            package.get("name") != "@typescript/typescript-darwin-arm64" or
+            package.get("os") != ["darwin"] or package.get("cpu") != ["arm64"] or
+            manifest != {"format_version": "1.1", "package_name": item["package"], "install_mode": "copy"}):
+        raise RecipeCompatibilityError("TypeScript package identity or version differs")
+    return infos, seen
+
+
+def _check_zip_archive(archive, item):
+    descriptor = _open(archive)
+    with os.fdopen(descriptor, "rb") as handle:
+        if os.fstat(handle.fileno()).st_size != item["size"]:
+            raise RecipeCompatibilityError("TypeScript ZIP size differs")
+    if _hash(archive) != item["sha256"]:
+        raise RecipeCompatibilityError("TypeScript ZIP checksum differs")
+
+
+def _verify_typescript(src, archive, item, output=None):
+    required = _typescript_sources(src, item)
+    _check_zip_archive(archive, item)
+    output = Path(output) if output is not None else Path(src) / item["outputPath"]
+    descriptor = _directory(output)
+    os.close(descriptor)
+    expected = set()
+    checksum = hashlib.sha256()
+    descriptor = _open(archive)
+    with os.fdopen(descriptor, "rb") as handle, zipfile.ZipFile(handle) as contents:
+        infos, names = _zip_shape(contents, item)
+        if not required.issubset(names):
+            raise RecipeCompatibilityError("TypeScript ZIP misses declared GN compiler/library inputs")
+        for info in infos:
+            path = PurePosixPath(info.filename)
+            expected.add(info.filename)
+            expected.update(str(parent) for parent in path.parents if str(parent) != ".")
+            target = _safe_path(output, info.filename)
+            descriptor = _open(target)
+            with os.fdopen(descriptor, "rb") as installed:
+                native_info = os.fstat(installed.fileno())
+                if (native_info.st_size != info.file_size or
+                        stat.S_IMODE(native_info.st_mode) != stat.S_IMODE(info.external_attr >> 16)):
+                    raise RecipeCompatibilityError("Installed TypeScript file size or mode differs")
+            with contents.open(info) as payload:
+                payload_sha = hashlib.file_digest(payload, "sha256").hexdigest()
+            if _hash(target) != payload_sha:
+                raise RecipeCompatibilityError("Installed TypeScript file checksum differs")
+            checksum.update(info.filename.encode() + b"\0" + payload_sha.encode())
+    _verify_tree(output, expected)
+    descriptor = _open(output / "lib/tsc")
+    with os.fdopen(descriptor, "rb") as handle:
+        if not os.fstat(handle.fileno()).st_mode & 0o111 or handle.read(8) != bytes.fromhex("cffaedfe0c000001"):
+            raise RecipeCompatibilityError("Official TypeScript compiler is not native arm64")
+    return {"archiveSHA256": item["sha256"], "instanceID": item["instanceID"],
+            "packageVersion": item["packageVersion"], "memberCount": len(infos),
+            "verifiedGNInputs": len(required), "installedManifestSHA256": checksum.hexdigest()}
+
+
+def _mkdirs(root, relative):
+    if PurePosixPath(relative).is_absolute() or "\\" in relative:
+        raise RecipeCompatibilityError("Toolchain directory must be relative")
+    descriptor = _directory(root)
+    try:
+        for name in PurePosixPath(relative).parts:
+            if name in ("", ".", ".."):
+                raise RecipeCompatibilityError("Invalid toolchain directory component")
+            try:
+                os.mkdir(name, mode=0o755, dir_fd=descriptor)
+            except FileExistsError:
+                pass
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+    finally:
+        os.close(descriptor)
+    return Path(root) / relative
+
+
+def _rename_exclusive(source, destination):
+    library = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        function = library.renamex_np
+        function.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
+        arguments = (os.fsencode(source), os.fsencode(destination), 0x00000004)
+    elif sys.platform.startswith("linux") and hasattr(library, "renameat2"):
+        function = library.renameat2
+        function.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+        arguments = (-100, os.fsencode(source), -100, os.fsencode(destination), 1)
+    else:
+        raise RecipeCompatibilityError("Atomic no-replace publication is unavailable")
+    function.restype = ctypes.c_int
+    if function(*arguments) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(destination))
+
+
+def _install_typescript(src, archive, item):
+    _typescript_sources(src, item)
+    _check_zip_archive(archive, item)
+    output = Path(src) / item["outputPath"]
+    parent = _mkdirs(src, str(PurePosixPath(item["outputPath"]).parent))
+    if os.path.lexists(output):
+        return _verify_typescript(src, archive, item)
+    staging = Path(tempfile.mkdtemp(prefix=".typescript-", dir=parent))
+    try:
+        descriptor = _open(archive)
+        with os.fdopen(descriptor, "rb") as handle, zipfile.ZipFile(handle) as contents:
+            infos, _ = _zip_shape(contents, item)
+            for info in infos:
+                relative = PurePosixPath(info.filename)
+                if str(relative.parent) != ".":
+                    _mkdirs(staging, str(relative.parent))
+                target = _safe_path(staging, info.filename)
+                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, "wb") as destination, contents.open(info) as payload:
+                    copied = 0
+                    while chunk := payload.read(1024 * 1024):
+                        copied += len(chunk)
+                        if copied > info.file_size:
+                            raise RecipeCompatibilityError("TypeScript ZIP exceeds declared file size")
+                        destination.write(chunk)
+                    if copied != info.file_size:
+                        raise RecipeCompatibilityError("Truncated TypeScript ZIP file")
+                    destination.flush()
+                    os.fsync(destination.fileno())
+                    os.fchmod(destination.fileno(), stat.S_IMODE(info.external_attr >> 16))
+        _verify_typescript(src, archive, item, output=staging)
+        staging.chmod(0o755)
+        _rename_exclusive(staging, output)
+        return _verify_typescript(src, archive, item)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)

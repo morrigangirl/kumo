@@ -5,7 +5,7 @@
     "repository": "https://github.com/ungoogled-software/ungoogled-chromium-macos.git",
     "tag": "155.0.8059.84-1.1",
     "commit": "28552f14731fe8f60422e19bbc2361468d420b25",
-    "compatibilityPort": "Using the pinned 155.0.8059.84 macOS recipe with the immutable, unmerged Chromium 156 common update pull request. An exact guarded local recipe policy selects nine platform/SDK/JavaScript tooling patches and matching official Chromium 156 Clang/Rust/Crubit resources; legacy C++ fallbacks and compiler/security-check workarounds are omitted. This is a local compatibility port, not an upstream macOS 156 release; completed build receipts and release QA must establish compilation and runtime validation."
+    "compatibilityPort": "Using the pinned 155.0.8059.84 macOS recipe with the immutable, unmerged Chromium 156 common update pull request. An exact guarded local recipe policy selects eight platform/SDK/JavaScript tooling patches and matching official Chromium 156 Clang/Rust/Crubit and immutable TypeScript7.0.2 resources; legacy C++ fallbacks and compiler/security-check workarounds are omitted. This is a local compatibility port, not an upstream macOS 156 release; completed build receipts and release QA must establish compilation and runtime validation."
   },
   "ungoogledChromium": {
     "repository": "https://github.com/ungoogled-software/ungoogled-chromium.git",
@@ -41,7 +41,7 @@
   },
   "targetCpu": "arm64",
   "engineBundle": "out/Default/Chromium.app",
-  "notes": "Official Chromium 156.0.8078.47 source SHA256 and tag commit are pinned; the .48 source change only increments chrome/VERSION. Common patches are pinned to upstream PR #4003 at its exact unmerged head, including the canvas-noise bounds fix. The macOS 155.0.8059.84 recipe is adapted by an exact guarded patch selection and publisher-pinned matching Chromium Clang/Rust/Crubit tools, retaining original 156 Rust parsers, sanitizer behavior, and compiler consistency checks. Existing Node24.12 and verified LLD23.1.3 remain compatibility candidates. This lock alone does not attest successful compilation or runtime validation; completed build receipts and release QA establish those separately. The lock does not describe or upgrade any installed or previously signed 155 runtime.",
+  "notes": "Official Chromium 156.0.8078.47 source SHA256 and tag commit are pinned; the .48 source change only increments chrome/VERSION. Common patches are pinned to upstream PR #4003 at its exact unmerged head, including the canvas-noise bounds fix. The macOS 155.0.8059.84 recipe is adapted by an exact guarded patch selection and publisher-pinned matching Chromium Clang/Rust/Crubit and immutable CIPD TypeScript7.0.2 tools, retaining original 156 Rust parsers, sanitizer behavior, and compiler consistency checks. Existing Node24.12 and verified LLD23.1.3 remain compatibility candidates. This lock alone does not attest successful compilation or runtime validation; completed build receipts and release QA establish those separately. The lock does not describe or upgrade any installed or previously signed 155 runtime.",
   "chromiumCommit": "1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
   "compatibilityLinker": {
     "version": "23.1.3",
@@ -93,6 +93,28 @@
       "size": 3245456,
       "generation": 1779297393605542,
       "outputPath": "buildtools/mac_arm64-format/clang-format"
+    },
+    "typescript": {
+      "format": "cipdZip",
+      "package": "chromium/third_party/typescript/mac-arm64",
+      "version": "version:2@7.0.2",
+      "instanceID": "63sEajfB6_MIU0PehstKopK1_P_yfUm21-o-zedkrz0C",
+      "url": "https://chrome-infra-packages.appspot.com/dl/chromium/third_party/typescript/mac-arm64/+/63sEajfB6_MIU0PehstKopK1_P_yfUm21-o-zedkrz0C",
+      "sha256": "eb7b046a37c1ebf3085343de86cb4aa292b5fcfff27d49b6d7ea3ecde764af3d",
+      "size": 9650018,
+      "generation": 1785474623781988,
+      "outputPath": "third_party/typescript/mac-arm64/src",
+      "cacheName": "typescript-7.0.2-mac-arm64-eb7b046a37c1ebf3085343de86cb4aa292b5fcfff27d49b6d7ea3ecde764af3d.zip",
+      "packageVersion": "7.0.2",
+      "memberCount": 118,
+      "unpackedSize": 27509796,
+      "sourceInputs": {
+        "third_party/typescript/tsgo.gni": "a62fb314e30f62e7b7ee4176a7d3eb78bbcf429f9f72ebe71f576b7bfcf7f4f6",
+        "third_party/typescript/typescript.py": "968a454eca00fa9514d33b72959d54c609a58a202519ba003eee5d4ff861ad55",
+        "third_party/devtools-frontend/src/scripts/build/typescript/typescript_vars.gni": "6e834d2ba894b4596fe3a425f220a8389bc0917bf73d13fb19206c4ef9c4b718",
+        "third_party/devtools-frontend/src/third_party/typescript/typescript.py": "ef6417d77e1251888aeb356e2afffbd395e158b6ee06a13a59ca0788bebda636",
+        "ui/webui/webui_features.gni": "da7bb41e65cb553d8d01d03c01f63fa172e71c430d70748e935e79c6def85e5c"
+      }
     }
   }
 }

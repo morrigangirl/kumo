@@ -15,6 +15,9 @@ import textwrap
 import unittest
 from unittest.mock import patch
 import zlib
+import zipfile
+import stat
+import re
 
 spec = importlib.util.spec_from_file_location("kumo_macos_recipe_compat", Path(__file__).with_name("macos_recipe_compat.py"))
 compat = importlib.util.module_from_spec(spec)
@@ -96,6 +99,104 @@ ORIGINALS = json.loads(zlib.decompress(base64.b85decode((
     'R}wx5AG@+HeK93R1FfRoI6pHd$d?HT+i_R1pu2PgR10z-XOZ)1U~aAa>Kg3^L}N9pUEO3ywdFT;1{*7E(jI)ZOGST}1phJsr7D5M'
     '83ZWtAgGEY`(Rh9gMC`74q*pYPBAdA^_>ALS^QaklP9)a?*^&HBvUzwe2s&?nU`4T;vz5IAq@6j{tt7pg7E'
 ))))
+TYPESCRIPT_SOURCES = json.loads(zlib.decompress(base64.b85decode((
+    'c-qxn|8v{6lK=hv6{z!4Nw1a^JI>b`-&|rlt$S(ei=CI7sWW^K2}y`afF(f7YMcN4b^%hNWRbEYkoPW=ktKZj>|(K4>;fS8=idm~'
+    '(_@|lUQ81`?dxgGl%Mce_q7_y-bnDh*JSSzIg#-+;iIu8hffZlldCZ!C*wp$JdMbkRF7q%uEitrNiiaa1RxbrGEIC&d>JqTKS%PG'
+    'C4vQHFeQ|{y*%wIJq;NNxz7Yt(_^ZMPX!q;L>kIe1cVDnXXO3)$=Qd?Gcx2M>s^a$!J}9vx_!OZ?+;QQ27N7M=#MEE{baz9?d!dc'
+    'DL5qUu~gcViX0!4>%EYR^zM3({Ph<}74s4nNzK?D^E>3vYe9$?hg1(`5_thn$gD<}M#1x=>pfFszy(dFo}dvkCA9J}=Nn-mG~^!1'
+    'h(dM-Kg;yv)aKG8Lf|Za6$4Peo0Y;M8JX(hb8f$F!}5fS8B6ymKyDx>YMo4aAXY;JJAx|3pvM9><e&uY1<=kuR5;}U5mG}RL%&-z'
+    'P=bVHd>yy`{%7{}TPy2aR8fzMIMu*5`3?C%jVM#-+1Fk?z24hjQ~d7>EcR96_d`B_<U&gg$`@qCGrT|n4|TM_4kYyg=F5a?7$d!)'
+    'r`3%1QeMbL)Ss>>BBLHvQ{i*X5;}k(u(HU?#EL4*2}~V6Ie6CdWf(GFb15o{B&;;EEPccTGYu^*QO;{tAV!0uD)aBArMU?kV#7-F'
+    ')ifH&a9#F<h2f2mlQQW%@6jZo(;gRom<Fu0R9X5k4a3q*E_7Mu3rly94u>o$EfY}9$}>ySD_D9_&5|5^EtmL<o*L7H1reCwWLjQG'
+    'CtQq5vvI@*rs=Ar%u73X*6H8Nbz>|mRhC{MrI%GwdbvieUxMO}*j-$b{VLP9vfQ%t3U*&rvHPmJQ(sm0*Q?4=cKD<>;3FVjnq98H'
+    'm|2ou-c-meZz^PpG#ZqRCdjVrILKeG-&m+ZUYPwLvvYV*nqJZRgR0gatZCjsHRlJwGQ9ztTatfRrMHk<md=u-YzRYcMPm=E8hco&'
+    ')sS5^1|hpr6i+Lg`gHA#3q{J(E86?Cs=Y_+XA3B^ma(JK^a{p~s%3q&M(>WQ`{L*!qwc7>!`3@NhtEpWhoPjpY=X!9a>+ca>axr~'
+    'DxJU%*Z4<=&ng7BvN<c;AlRKQ*JqPkEj&}C%#Pd43U@g#!c{C)**tBFl%$s$5R+ThJ0`QNcTDCwwKIh@!@!l6qg1*xHZs8|=ziXW'
+    '4JI<VfziCijhPp$$g=UZrKc(j-lJo}Aqblo^~Y@thW5!)aFoTB#pvw^h?lkr#t;vJ`7b8O+}p2O&L~EIW=-R}eyWl_M00&6Zb>`^'
+    '!3tb?_%~bX7y@Ymak=dh5>q`UR6&Y|U-P99lFMh7pwa=@1D`21PnyoZONHRq0s?aKBhzn9P<sK0?au3Lp(2OuMbMQHwYNLCIM6an'
+    '5v|vD`2low!i8Z4V&2wlsiKA1xVBJH4p$Fa$O9n>(`h2|M)d?x#V_qV;j83g_5(BkgYULy)XDQY`{W<lYDnwU&}qFU?E=Mp(gKZX'
+    '!5>f>`~#ZZ>g;D#-sAcX)@T)0dRo<WKHC)#Q)^*0WMw^E2+8Vx`)wvw=nXIj?ar4@XWkVbQ*i~FdTBKEBb~JU$SSkiCrSr0)yE&C'
+    'V78AS4;LDiy6+45fy`=Qu}lr1=v*gy7cyp|ZJT3|_K80Uj-`S?UBkC_XGXAC>-^%(q=OZ`m!5;Af`k4m8hV0FK&DI`UnMEn0VZIC'
+    'z_feZO7*b&vem&FmPif?Oy-!rj3R*YVXA0%3QCga+n+e*_Lo3P#91lJN93KvF&qP|o)X9e!_>=0LaW=g=`FKF1w(ZPmFf5FH#A`W'
+    '{Ri^fyy_RL>Z=%rO6xnmlQCng%y-A+Nk$s#oAstI_9v7Gp=T{{hy2H^oGsa-F?4*;zTUGXUS9)Sd%$T{VHpGoFMvEEKT#2YHS?)r'
+    'icH2VVR<va_Q3?Fr_j~64DFdrM`L5wurr|=8B!RspldJ!=78*uMlm3cwT{*6et*REI31t@^ds&kQput2&!yAnN~KKopC3FcZ5gm#'
+    'Y*{Y8<&x}<>*L1(6nkvs+L`s{Lk1S8Bn5v9`%d$SouOyZZk=RJy}oWeR`8Lv8Mt|@T0mzu=)jJUmNjhv3*)T?WwHchv(qW6y={e6'
+    'ZRj4)EI@jmG0C16QLuHMwaSZ14`v4ZwbAWw2d}?$R!x!tyT#RW)rFZxXpoDUUbDGBUtV7|k$SfjWcmMmi(po)*Xs)|zS4f)sx><Z'
+    'GcU%^R)o#6cc}+cm|JG<%La?^4<)lO85If57UP|4QaqHMnLn`H=H+dSjR02((QI^>orXu`Qp5P8NkHbq0CZ@OAiCLr;24}JA{Yxm'
+    '+i;h`?gJ6r2ud-Nv_HN*BYlI$mF)D)AMn2X8#)5B2Qf;B{yxbZSS^Wyp@V->8#B1fNxl|^L8CI}j6WP`_3#ahRVs9EC4ckUCDGO{'
+    'K&y5#Hpi>p_Sgz<cLYbwtl4bY9xrjknG=wbHTP}d+{%9CYRL{@cT+b|EBC3k1zWY;z9Ux2QuKDHmD^?8LOKDtzY?@9(*0$l?T{+A'
+    '__hUf19ERMZ(Af+GJoMv=BpN~x5X-7BitHs#X9!3Sfy)^+W}VZyY7VPaw2%?2E>)>zI3L#FI~=Xt9PNd!&<pzy)Bdz5Lcb|%30^V'
+    'a%gv6IkXb5+<6owyZzf@xdCxAm90E<uq~1!l`1*Tuq~E5+fsQ@VrxWK8o%}k#&)O&Za`dV*?}`HJ8-EP2M+tO<Uq=HV2948u;rsJ'
+    '+k&jv*4`G%l~Nr#Q>sIEvth|uo^7$*>E}~-D)rRuy3+FbqisQ4>D5zbdUfPDqOLeIwJn|#5Lc2vaySl;Tuu~64hQv-b9dy(p_y>J'
+    'W_<X}4amw<Z(D;oQrBnB3`N=DyKT`Ns{S)qs=vD??B4xlrwg}*ayVA*A1d4$#6^%<c~Wv~ypm&;+v2%#N=puAZj0o^CagK~xh>-A'
+    '^PyX#Ia|;zJ9)Y>(1VVt?ttnFr{VzYE~vXV*Bp1qkJ%QE6%43ig`)(;0~KHFA(oYoyOtpQa7@-8S;)>?6bfpl-~)dzoodL>7<r-e'
+    'DVk$1P8goSB0qotgbbJ$$si4x>i?&y-;bm}rhP5~c2|_vwm{jzjow!!#nw=Y3n^UiWPx_%$$)%S{UN<!T|9r5s0|_WgJ=&ywu~22'
+    'x}cG}NdXUIxsay8aniv7V{w=L9=hOahP4}K_PJ>&(lwLmPMj@c-Q#T8s7z@xQjP|+!Rn7$7_&upWm_l*ePn^0sE&m)pALBH!dw7-'
+    '<*bc4p1Y=YQ{jNe1*O=LI~Sc<Ev)6?5%A$~*U^C(II;U+Z+$6lVSx67DBe<@tI+PE&;gqHelIfH1q}TSS6DCwB-Gc74&Y9JO1XkU'
+    '^>KxTPgA(UQVdUf`_Ayd#|<1{?P5-fIJ+5wMI`Ny`!tTjsS~~s%}?0UD!}G`+I>`1k1kZ<Vx*k0YOJ9%w1nZaK`!u&;dOwMY94N6'
+    '*&fgx1~cFoIQgu*YVB|rW}!!D<gDrU*QPf`TRTz4X&f_%JCj{!%NbA?Pde{9#`6bX;zVlc%g{~ubRX8bP5IAm1g7NS65p1JIg#9@'
+    'F|U~p#{8-&YFlclSqSU?p0Z@xRSZ{z<*vSP2_!m>E}2wg9y!H>!M?bEw|OT`*dR#o5zp>`2i)=KDFc_O?vI%0<AZMXus^5ZV0f-0'
+    '0`X47mBPo6>LrxYt{-x6^}1s&bj`#dzdHz12C(>?c3q@4aS==4mnITiS!L>3m-8W8%IgjiIeGY~emK2Z61bMU|27xfS(Ju!dB>^_'
+    'g3UC`QaQmVOYd~e#7<5xE}0orH4{2zx7=qR85mckFA^EWbvNyl(@>6TCUO?C2rPwtzPm|Um-o&T*FjO-@<a-xS~sOT2&@}W!*>t{'
+    ')ZI@%U0q#dirxq%6~mNRccacR{-~P<UQ$pqjh`<Y8LJoQ)zwSlBcowdGmR^nj9A^>{+SIv-`k3=fzHmM)>;Y%NhWIcrAB(_<MrRd'
+    '$FJb=odj|1q?+`$EXCU0ts)ulw}c7!nxj{<e`lyQ;^0|IR)7sqI%Oa~@b35@^=n77eyb%}x8rK4H08NkVt27rEO?iSMiiuOFV7HZ'
+    '#?32`s@=~swCZ;B43P%BFhi$iH_Xte+Yd8DE*mp=wYz+VN)tYxA%q`w(=h3qc`LgR;bPQ~^I+1Oo7YYH2YSm#v@vpxjNXh=BXfmG'
+    'Z^-2{>7SZ&W@q%8al}me^8HYC5W-F68fo}J+<)Wa4WN9$L$0Sa(|XIzd5XHJG#QW@g0;t^1u9L1ql@Hf9>7TKB#7%?<IBigBrKFP'
+    'us0djPp*D@YX~(l6I(*JEUDLZMl#LD)`nu;p*0d|DzY}Ta@+R{70_XITZ^;&vd?DhMH9P13v{j$Dil7(R5QW47bs>lno)})sk2+Q'
+    '^P!1{5xh!R-7;)ujb~1&_9Y%9Rrd;yp`j$$B^E%C9|ld*s$26KSh+$n@A;7VQ$J*%@d$A31NZ~e_`IbVyUm!4jAApyHdqGS96Mpz'
+    '8#=Ql!PFSo+p=qJRqZQvb0W5z8Zqrff_3W!O!t2Mf$C>A_~qoHej>Fms3IM|)}3agfQuouDw&KTDf({`PX8NE`dWLQ)K78C$bJV>'
+    'pcI$VzhSx&zt)mIxx8#vtS2-K2h_j$$VOc0WZD2lDTaKMCbcg*&B&p`{2FgEsq8?gsW@mx6#O^#3sb7*6^ERjyy2`)DW*!xsM#@a'
+    '$_DAE2{O1~(*PYg5x9K!mW}BxmkkKeyojiQS;x3gXA#%B3AK2~Lv}KjQZ+&BN2Z%qdQ0ehvnK_2p!c5sF@2MaYBU{-K~eqgwxxP;'
+    '`fjtiWfxk_s>sD<_7vB}E{~Z#h!SUs&l+xBo=`ujW*cU=ZO+Bl+IPS*ddyD~uBWF=(?)`iOGp6kiUkeqDO!qGRNX))rVY&ASM09g'
+    'nc#{?Os4vhX}!U7{5uf*bopOwI*>F8-qWc}8*r2V$=ReChx{|;8nvZ<O8<i|iELI=?4SDSY;x1W4rFRRIKmov{wsUk4Ga3*SbSFJ'
+    'hJkqywt)v!ce#^g4X~9_|INqqH)inUK2EKz$%vj@UT#QkOFHu)y2<8UY(sHNQger~(H7$MzKu{qH^3Ydc(C!<o=$V!HlMSa?6pP='
+    'V@9jyIR#60VPfejrqj4)Lis}Ydzy-xw^0o_^Y&)e6t#CeVMBS>6gf+$#${+j<pX>)x^H2qUhtSTM=bw|ZLOOa#L|q3k9h5QP`{3d'
+    '23lmU;2PHHT{nK6$zo=Wgc5ekRn1F%rhnexUFGN5<=vm^ol*?JQ#NEtQtK3H=$M^?_xy&{O{jr~B@LZlQeDH<KubjIJ<4@cS^aW{'
+    'S}3i2?L!@unDAxIPg58=W3A&)8yvmZoB|gx72#R}4ZA$(u6)aF9W6^6us(Q0XB}g;_?iRUH8dZ!QZX0ug<W&|X!fmEddVG-!Vh<P'
+    'SA<WKFs8WMD!Q=@r$ZiwtI`}2-{Fqcb$4|xUlM96ySZ!Lcvc%(>GeRHU7c8s2i}A?mhwh9K+9fUcmExByW#B)<d1m>iknD$R?h`q'
+    'n5vx*8Y}?H2u4o!6k$KVq}K_n_85>OBuyW_b6$y+Ok*t_00pCjM(+9{;B+LU(%e^`Kc+&k&;^r1xk2e?FKcrGCpWmiv<irAa-5<H'
+    'Xy^vSrI1FU9MD}iu2%uh--qRZOLQ?E!5limaUpyMZyd>RRP10yc{Sv0lg$C6Hq8N$U@n{k>7o;1S{u87Vad>$pW@CDh*L53AHFnK'
+    '1!Zo>-suATB3i;|u)`ZVRzbP6t5C+p#Htu|f$}?eT`nXAy~k+e49Iv~X~dlPff=O3KFkm&Y~ThA6yL*zrof5IuOI$sX(bGIB>()a'
+    'c<$t{LnkN+^_j;U9En{(RnL0Qw~7ZJ489mLWiNep@a~lRlxp$WEVP5`<Cj5S>@J!0BwV>>TD#yWO<YVS8!Ts5!Q8%d0pem7nNY>u'
+    '=@!0FAsY#OI*^Hm*-0l3PQ8>7*=UVmLu?3s*`3eg-S>gYC^(CXi=acM{c%0~3VS`Atf?~<An*JbS~)m+B2I*D9`*I~7@b}hfPdgy'
+    'm$!pSMZkUDwO}B-t&e*x0zLS$?n)StJHAgW=*Du_w<Rp#`qUq@E*BaP@x|L8I=c_*1jxR=MrpeB&|ZP(1Zl^IpO?Y#bfNj>1`i(%'
+    'RSwmpuuj|EZJl-rR>dyv1z7;aGkLfqmcN+H)ktQWJX%?eWacWFCccyI-ei`l29ik>P)!|nhMh9H8+Y_WKxM*5Td$}u0FDp+t~=W>'
+    'whw_gQI#>wi*AIrO9-(9G@C4(G%=F?%|@g2A$n&(eHw<{F-Ko$>Wou&dSc+*Srr54cqTWP8@L>mV8#MC0fI{IoC0Ufb35IjN4&wg'
+    'tTk9VampIPjW>GMtrAcP8mqC??pWMmap4{g*G{YlL{K~k9U&=mtb7i(e4@rqk)FBH%Ut5+4LRUE>|D(-0f*FsU;U7cs6WmAbOCLH'
+    '5jRK4m;v_isn-6Sw;dxs)1;}=EON0xhG>%n&w?zY8Q}uEG!3<<m4~md_aM-miSv5z?DFu*;nR$E_VcKBVOO6E$sh2t(fq21<@6I='
+    '-7#lnmvi3WYT`;>0vRo_0x7fV@V&>g!^<nH<Ju*(JMpA_90Fke#H#kh6a3Oi$}k~S?31_=aw5*f2^#W$(u5-{RvFSznNmWYM{x+6'
+    'sy{NFCI&A@nCIb}o)R9gh0J#_S?h5k)6w_@<g3ob<%9#BLLqh+vxM7|m#4EMvV{TwAt#qpp~nnDl~dbHpehqxEC!mOSaQqo${u|t'
+    '(x{lJZg~8j4^GC+zgdR<xmeK05(_EdKl=t0Tn=CongRNLF7Wn}4>V%MqFmq>-=&EG7KMbDs{AU<>Fgp`rsOX)E~Ev_52?Mpsn`eD'
+    'rBXq!7ZVF-R*T8tmt!AVK7Jj7zT(4EAMpq}6L_U@z!SEh2RK$fN@<VieaTbuU*E39-u~YR*()AhoW0rESOhc(D)AQ%H_i=L;cG9R'
+    '?!6{^kG|`t3h$Q}7}=3{s>f11y%vwiiHxTZ0*p0*!S<Y7jTte|E%7uWZ&E0hC@l6#F(QWq=&4MM1UJ11{2bx^(1HbIFeQ|{y*vf4'
+    'Vj406TFL}e(_^ZMPX!q;L>fvk!yrmXXXO3)$=Qd?GlFKLcP*f85s`{;qiqDY;R#ic;^Eh8k*9}LW0*BdQ0XAs9-k*o=ijBm0c(aV'
+    '`H|_jT+n2SkM6ZQudN@<hcnP#MEx<SRl7ruk4cLr(etC$>)c(2-loZf3&RlfR|`saZ5dmHfl{m~9R;SeEtD|4viX+fHpBjFotk>B'
+    '*Q8xQ*e5OM^cMU9V}*aT@>`w#Lbdl?q<2^gO2D^_*7|y%!C1?QGBqdmdqv$IyJNHZ-+r4(&Q2rk&X>G#v-!gebD8Q~5Lu7*zDh3I'
+    '`41Q-0!Db-Gt;c+b@s_Wa`AL#{gjtxcVHk?do_tpp$igYL}&E`aEf2bYUaE@B5xFKWRnRaG-0T*6wFmNH1ayVycbu~m~-*a7Por6'
+    '){4(L(89mge5ALE((23={$nbxppd;q<s+T6{m5DjwGR_i0Btz_AO*`M2Dxa4mWIg}nDA%yY{6{6LE-u6>s?6j4v<0_!}EXsBsi9;'
+    'H)0yTwL9x8WXu++onM?is2<Feo7YPPzCK%llO@;$CmMBp1@?P=#rz?S<5sGN-IuLQcP;<>89yMmoE^Nr0f>Qz1x9B<pYjs+CmP)S'
+    'C76<aUf0Phkbt4}sxlvj#`=GEOr8`*8lcQ)H2V)qhM*CaM2GyxLixN-kH+X!wy*bWx!2dws69}*tlBC#WM&22BVun4fe8oPA2J!k'
+    '9Go{0<|-D&db&?=?GWZ4bd$_9ggpS&U`mH!80@1DvJA`aC^%k>m~(=!`~4Bu<8*+1*N?cLNF|55KbKyg<Et%H|M|hQHSL9l6x%x&'
+    '^8M0a^7QfJ0E#{~@-Gy8@US)7MZurO-p2DC#z|_oPBIZ(U$-7B_{d}doIO@8^0-pz+bu9s#;^e~v|&&yOTY$nI*VFuTWK{HI@I&f'
+    '26~>EZaohV_<CMG<HD5Ev*mjxtY|N)IcC#jbo<-E>n}*f`b{av=q~^ChKvGT2DV0U;|wi0JqIuUkDZ>}O@R*X_krIqz`cwiAN4_p'
+    'H8Op@*QqFEo-+4L+WNxTyF6xJ*49uIL*GB}7|{Ids#+|6ZGy4@!;p@OUuSjDT%pg+Jm@(EZkF+T9ua(&JOX%Pv=s$!AE0k3^68vl'
+    '?*jn>;mjDO<N?vl9}5}E5r=W!{^{zM_jn&k|L4n&g@Z9n6070_4`RZUjGKQXP7{3nr0PMpLq`S@sz(y61a6}e>@^$B5mPg>1doV{'
+    '8TK|4Y{-E-D3^n`l|&x_Lmuqm0B_$UrroMz+yj|4%roi;!}L22Atx5IzQ!Z+8A2_vR7A@xrpeVUqA{?T;xRJ|*&`=Z2&sV+m}fBT'
+    '2++u7IR9ECb&T=GzYGtytWEYT4bRdrB#tpO^}f<unk{|g`jK<^4!RJ_1V*lS9VfE%nGK+8?4pPba>6MwPCUd!H_#UF2Wfy^*^B9o'
+    'E!eYw=Quo4w9z!MH>5*Qg$1nF&&5z0QVhItn-0Q(Mnh?aBME-}2r6O0X6Knn>mMGBbki`fByrF8TRDGLiZ}p`B=<pX9I!zLAWhiD'
+    '(F`!}TcCnVh~VO6T;%Nk!l=+0OQvQ9j|(Ls`n@caF@}mn3Xn-VVZWy!AZTq?BzGV!99mw(RmUnga+&kc?V`B5rt2{Ji@HX*`J83d'
+    '#YFjrH!Pg>GZywt;aRk5$(<Q($i;@CuN>xjACR9f!K!I<sL^x*C>0C3pxU;(t%j)i(8!N&g_&fDU%V0-2B%_nibZiCAha&i*9EoA'
+    'd(lJ6p4tEY7fIs)l0eL%oOJH1@`^gMID4V3C{bY}t@-?sw>cqgtwyp_)L5+W^JN#8so=L@S;t@fdirbIPw<9aocoUspT2nc>dDcI'
+    '&TI0KMKEgYbb%%hYQYd5rXeT*HXjXGfI4&gqL-}(dBxR6Iph3WHZ``hw&FwpdhIjxNXcJ+fzsMEP=G}8ppYb0W>6Qzl<nUXS1lIu'
+    'g^o+}eEW8v6c-<<y0Ob$U_l4+ZeHh`34AT(Rpx!EC#)uA&&lS}{wZTJ#(61=rdKv%?u=;jegID@bRMqvAan)i2!yee4q^AobQ2_-'
+    'oKi?Ty-H>48^f(`w2X7n&%?!a&HKP6<cbc+MM?8aAN+eY4WfJ7zBOHH+j}xo6oOX<DoDr`rI%M&8a~esUp#+u@a)x7Gkic`#-<vR'
+    'X=P*V#S&i_1x#3uILQogwhBiI+6l6MlU0ewFoe}Au~)12y&kfXT9lB9OWMmt3u5|kb%6^#=&1ltR_?us;qtJ$Ncb%nu)=f%UgO-E'
+    'B5y9vGq&w>v^kx55f7ga?qs}}4tqr2q9N{@`NMXOvF5&6+8QAdBV#jjfni_rP^|OPL$^d&WBrJXrP5}a^3x<?M&vT|$Kb3hvpj+t'
+    'u4rVwB-x6I34x4FO;R-e+5C%eb93#@9{negLWddS7myT$oH%XFE$x#h&z>C~9z4osk^?lN_Y~^st5+|c9~~aN1cjOnNNBEU68PvW'
+    'Ha!6Gn(EFbysW(j4hzG7!7%WKK*}iKY$*U_6o6CaXH~454^euMf~CKEenk4jECyzMjEGsu%=b4U${*!ku<@ny*(!U!a@xxW`ciLx'
+    '|GnuvZ`NTr`m<gvBtkLtOHChq|9y_th9qN3GQ|fo)G5qQtDKFD-%MMV>Z9ytNcpst*`eaf3K+0eehhlP;H2`<?!{PE_Wt(mZ~qJN'
+    '0O@u'
+))))
 LOCK = {"schema": 1, "targetCpu": "arm64", "chromiumVersion": compat.VERSION,
         "chromiumCommit": compat.CHROMIUM_COMMIT,
         "macosPackaging": {"commit": compat.MACOS_COMMIT},
@@ -120,18 +221,18 @@ class RecipePolicy(unittest.TestCase):
     def snapshot(self):
         return {name: (self.recipe / name).read_bytes() for name in ORIGINALS}
 
-    def test_exact_approved_nine_patch_selection_and_resource_manifest(self):
+    def test_exact_approved_eight_patch_selection_and_resource_manifest(self):
         before = self.snapshot()
         result = compat.adapt_recipe(self.recipe, LOCK)
-        self.assertEqual(len(result["retainedPatches"]), 9)
-        self.assertEqual(len(result["omittedPatches"]), 14)
+        self.assertEqual(len(result["retainedPatches"]), 8)
+        self.assertEqual(len(result["omittedPatches"]), 15)
         self.assertEqual((self.recipe / "patches/series").read_bytes(), compat._series())
         self.assertEqual(result["originalSHA256"], compat._ORIGINAL)
         for name, expected in result["adaptedSHA256"].items():
             self.assertEqual(hashlib.sha256((self.recipe / name).read_bytes()).hexdigest(), expected)
         for patch_name in ("fix-build-without-crubit.patch", "fix-disable-verification-token.patch",
                            "revert-v8-sanitizer-changes.patch", "disable-clang-version-check.patch",
-                           "fix-gn-compatibility.patch"):
+                           "fix-gn-compatibility.patch", "fix-typescript.patch"):
             self.assertIn(patch_name, result["omittedPatches"])
         manifest = (self.recipe / "downloads-arm64.ini").read_text()
         self.assertIn(LOCK["officialToolchains"]["clang"]["sha256"], manifest)
@@ -287,13 +388,33 @@ class InstalledPayload(unittest.TestCase):
         formatter_cache.write_bytes(formatter)
         self.tools["clangFormat"]["sha256"] = hashlib.sha256(formatter).hexdigest()
         self.tools["clangFormat"]["size"] = len(formatter)
-        self.tools["source"]["sha256"] = hashlib.sha256(b"fixture DEPS").hexdigest()
+        self.deps = ("fixture DEPS\n'package': 'chromium/third_party/typescript/mac-arm64',\n"
+                     "              'version': 'version:2@7.0.2'\n").encode()
+        self.tools["source"]["sha256"] = hashlib.sha256(self.deps).hexdigest()
+        self.ts_item = self.tools["typescript"]
+        self.ts_files = {"lib/" + name: b"declare const value: string;\n" for name in re.findall(
+            r'"(lib[^"/]*\.d\.ts)"', TYPESCRIPT_SOURCES["third_party/typescript/tsgo.gni"])}
+        self.ts_files.update({"lib/tsc": MACHO + b"native TypeScript fixture",
+                             "package.json": json.dumps({"version": "7.0.2", "name": "@typescript/typescript-darwin-arm64",
+                                                          "os": ["darwin"], "cpu": ["arm64"]}).encode(),
+                             ".cipdpkg/manifest.json": json.dumps({"format_version": "1.1", "package_name": self.ts_item["package"],
+                                                                   "install_mode": "copy"}).encode()})
+        self.ts_archive = self.cache / compat._cache_name("typescript", self.ts_item)
+        self.make_zip(self.ts_archive, self.ts_files)
+        self.ts_item["size"] = self.ts_archive.stat().st_size
+        self.ts_item["sha256"] = hashlib.sha256(self.ts_archive.read_bytes()).hexdigest()
+        self.ts_item["memberCount"] = len(self.ts_files)
+        self.ts_item["unpackedSize"] = sum(map(len, self.ts_files.values()))
         self.lock = copy.deepcopy(LOCK)
         self.lock["officialToolchains"] = self.tools
         self.lock["rustArchive"] = {"url": self.tools["rust"]["url"], "sha256": self.tools["rust"]["sha256"]}
         compat.adapt_recipe(self.recipe, self.lock)
         self.src.mkdir()
-        (self.src / "DEPS").write_bytes(b"fixture DEPS")
+        (self.src / "DEPS").write_bytes(self.deps)
+        for name, value in TYPESCRIPT_SOURCES.items():
+            path = self.src / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(value)
         (self.recipe / "build/download_cache").symlink_to(self.cache, target_is_directory=True)
         for key in ("clang", "rust", "llvmObjdump"):
             archive = self.cache / compat._cache_name(key, self.tools[key])
@@ -309,6 +430,19 @@ class InstalledPayload(unittest.TestCase):
         target.parent.mkdir(parents=True)
         target.write_bytes(formatter)
         target.chmod(0o755)
+        compat._install_typescript(self.src, self.ts_archive, self.ts_item)
+
+    @staticmethod
+    def make_zip(path, files, modes=None):
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as contents:
+            for name, data in files.items():
+                info = zipfile.ZipInfo(name)
+                info.create_system = 3
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = (stat.S_IFREG | (0o500 if name == "lib/tsc" else 0o400)) << 16
+                if modes and name in modes:
+                    info.external_attr = modes[name] << 16
+                contents.writestr(info, data)
 
     @staticmethod
     def make_tar(path, files, links=None):
@@ -411,6 +545,110 @@ class InstalledPayload(unittest.TestCase):
             with self.assertRaisesRegex(compat.RecipeCompatibilityError, "will not be replaced"):
                 compat.prepare_platform(self.recipe, self.lock)
         self.assertEqual(target.read_text(), "unrelated")
+
+
+    def update_ts_zip(self, files=None, modes=None):
+        self.make_zip(self.ts_archive, self.ts_files if files is None else files, modes=modes)
+        with zipfile.ZipFile(self.ts_archive) as contents:
+            infos = contents.infolist()
+        self.ts_item.update(size=self.ts_archive.stat().st_size,
+                            sha256=hashlib.sha256(self.ts_archive.read_bytes()).hexdigest(),
+                            memberCount=len(infos), unpackedSize=sum(i.file_size for i in infos))
+
+    def test_official_typescript_109_inputs_and_immutable_payload_are_required(self):
+        result = compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+        self.assertEqual(result["verifiedGNInputs"], 109)
+        self.assertEqual(result["packageVersion"], "7.0.2")
+        self.assertEqual(compat._install_typescript(self.src, self.ts_archive, self.ts_item), result)
+        compiler = self.src / self.ts_item["outputPath"] / "lib/tsc"
+        self.assertEqual(compiler.stat().st_mode & 0o777, 0o500)
+
+    def test_missing_native_typescript_compiler_or_declared_library_is_rejected(self):
+        for name in ("lib/tsc", "lib/lib.dom.d.ts"):
+            files = dict(self.ts_files)
+            del files[name]
+            self.update_ts_zip(files)
+            with self.subTest(name=name), self.assertRaisesRegex(compat.RecipeCompatibilityError, "declared GN"):
+                compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+
+    def test_typescript_version_and_package_identity_cannot_drift(self):
+        for metadata in ({"version": "7.0.1"}, {"version": "7.0.2", "name": "other"}, []):
+            files = dict(self.ts_files)
+            files["package.json"] = json.dumps(metadata).encode()
+            self.update_ts_zip(files)
+            with self.subTest(metadata=metadata), self.assertRaisesRegex(compat.RecipeCompatibilityError, "identity or version"):
+                compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+
+    def test_typescript_zip_paths_duplicates_and_special_modes_are_rejected(self):
+        for name in ("../escape", "/absolute", "lib/../escape", "lib\\evil", "./escape", "lib//escape"):
+            files = dict(self.ts_files)
+            files[name] = b"bad"
+            self.update_ts_zip(files)
+            with self.subTest(name=name), self.assertRaisesRegex(compat.RecipeCompatibilityError, "Unsafe"):
+                compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+        files = dict(self.ts_files)
+        files["badXtail"] = b"bad"
+        self.update_ts_zip(files)
+        malformed = self.ts_archive.read_bytes().replace(b"badXtail", b"bad\x00tail")
+        self.ts_archive.write_bytes(malformed)
+        self.ts_item["sha256"] = hashlib.sha256(malformed).hexdigest()
+        with self.assertRaisesRegex(compat.RecipeCompatibilityError, "Unsafe"):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+        for mode in (stat.S_IFREG | 0o777, stat.S_IFLNK | 0o500, stat.S_IFIFO | 0o400):
+            self.update_ts_zip(modes={"lib/tsc": mode})
+            with self.subTest(mode=mode), self.assertRaisesRegex(compat.RecipeCompatibilityError, "Unsafe"):
+                compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+        self.update_ts_zip()
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with zipfile.ZipFile(self.ts_archive, "a") as contents:
+                info = zipfile.ZipInfo("lib/tsc")
+                info.external_attr = (stat.S_IFREG | 0o500) << 16
+                contents.writestr(info, MACHO)
+        with zipfile.ZipFile(self.ts_archive) as contents:
+            self.ts_item.update(size=self.ts_archive.stat().st_size,
+                                sha256=hashlib.sha256(self.ts_archive.read_bytes()).hexdigest(),
+                                memberCount=len(contents.infolist()),
+                                unpackedSize=sum(i.file_size for i in contents.infolist()))
+        with self.assertRaisesRegex(compat.RecipeCompatibilityError, "duplicate"):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+
+    def test_typescript_zip_corruption_is_not_accepted_as_a_matching_resource(self):
+        self.ts_archive.write_bytes(b"not a zip")
+        self.ts_item.update(size=9, sha256=hashlib.sha256(b"not a zip").hexdigest())
+        with self.assertRaises((compat.RecipeCompatibilityError, zipfile.BadZipFile)):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+
+    def test_typescript_extra_installed_files_and_wrong_modes_are_rejected(self):
+        output = self.src / self.ts_item["outputPath"]
+        extra = output / "untrusted.js"
+        extra.write_text("untrusted")
+        with self.assertRaisesRegex(compat.RecipeCompatibilityError, "entries"):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+        extra.unlink()
+        (output / "lib/tsc").chmod(0o700)
+        with self.assertRaisesRegex(compat.RecipeCompatibilityError, "mode"):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+
+    def test_original_typescript_wrappers_default_and_deps_version_are_guarded(self):
+        feature = self.src / "ui/webui/webui_features.gni"
+        feature.write_text(feature.read_text().replace("use_typescript_go = true", "use_typescript_go = false"))
+        with self.assertRaisesRegex(compat.RecipeCompatibilityError, "source policy"):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+        feature.write_text(TYPESCRIPT_SOURCES["ui/webui/webui_features.gni"])
+        (self.src / "DEPS").write_bytes(self.deps.replace(b"version:2@7.0.2", b"version:2@7.0.3"))
+        with self.assertRaisesRegex(compat.RecipeCompatibilityError, "DEPS TypeScript version"):
+            compat._verify_typescript(self.src, self.ts_archive, self.ts_item)
+
+    def test_typescript_install_never_replaces_an_unrelated_destination(self):
+        output = self.src / self.ts_item["outputPath"]
+        output.rename(self.root / "saved-typescript")
+        output.mkdir()
+        (output / "unrelated").write_text("keep")
+        with self.assertRaises((compat.RecipeCompatibilityError, OSError)):
+            compat._install_typescript(self.src, self.ts_archive, self.ts_item)
+        self.assertEqual((output / "unrelated").read_text(), "keep")
 
 
 class ResourceCache(unittest.TestCase):
