@@ -125,11 +125,33 @@ jobs:
             --engine-app "$KUMO_RELEASE_SOURCE_DIR/recipe/build/src/out/Default/Chromium.app"
 
       - name: Qualify the freshly packaged native browser before notarization
+        # Mandatory headed hidden-document completion gate. This dedicated
+        # self-hosted Mac must have an unlocked GUI desktop; a locked runner
+        # fails with bounded status diagnostics instead of skipping the gate.
+        timeout-minutes: 15
         run: |
           npm install --prefix .cache/qa --no-save --package-lock=false --ignore-scripts playwright-core@1.64.1
           KUMO_QA_APP="$PWD/dist/Kumo.app" \
           KUMO_QA_OUTPUT="$PWD/build/native-runtime-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+          KUMO_QA_HEADFUL=1 \
           node scripts/smoke-native-browser.mjs --run
+
+      - name: Qualify native PhishLang warning and native Settings controls
+        timeout-minutes: 10
+        run: |
+          KUMO_QA_APP="$PWD/dist/Kumo.app" \
+          KUMO_QA_OUTPUT="$PWD/build/native-phishing-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+          KUMO_QA_HEADFUL=0 \
+          node scripts/smoke-native-phishing.mjs --run
+
+      - name: Qualify final network destinations and redirects
+        timeout-minutes: 15
+        run: |
+          KUMO_QA_APP="$PWD/dist/Kumo.app" \
+          KUMO_QA_EXPECTED_SOURCE_INPUTS="$(PYTHONPATH=scripts python3 -c 'from pathlib import Path; from build_receipt import current_input_digest; print(current_input_digest(Path.cwd()))')" \
+          KUMO_QA_OUTPUT="$PWD/build/native-domains-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+          KUMO_QA_HEADFUL=0 \
+          node scripts/smoke-native-domains.mjs --run
 
       - name: Sign, notarize, staple and prepare signed update assets
         run: |

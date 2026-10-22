@@ -24,6 +24,12 @@ MARKER = "KUMO_NATIVE_BROWSER_V1"
 DESTINATION = "chrome/browser/kumo"
 RECORD = DESTINATION + "/integration-manifest.json"
 EXPECTED_SHA256 = {
+    'content/browser/loader/url_loader_factory_utils.h': 'e08addcc15e67325ad76d564431f3f41a42f4458ac8ea38fef07e65128d5ebef',
+    'content/browser/loader/url_loader_factory_utils.cc': 'eb842a491f332820fb44ca91f0871c7d710c9719c24cb9daad4ad41b953766db',
+    'chrome/app/settings_strings.grdp': 'ea4b55d209f455f5cd6df6fa4f2ef78ffec9220ecd88f379fa4874cd910d6caa',
+    'chrome/app/settings_chromium_strings.grdp': '2052b02a52de5e77f1d6cd213947a4223898b7d020397f54be17c5fcbebcbc20',
+    'chrome/app/chrome_exe_main_mac.cc': '96ed48f2bd53d81cebba0063f1408fec4da7c952af2d7446f047a5d46fa885df',
+    'chrome/common/chrome_constants.cc': '31acb1832e0ab5f0c2c0f2df6d403589baeb2b1a553b982edf17e395d13d9672',
     'content/browser/websockets/websocket_connector_impl.cc': '9186e2bff0b0db6ba636eb6e9d15467933725e474c439fa87af17a62061b8252',
     'content/browser/websockets/websocket_connector_impl.h': 'f9cd596bf071dc614f4290b6140e8ffff51ad4c44571de34f38a1e33ddc3f264',
     'content/public/browser/content_browser_client.cc': '831a8f847353333323614b093b0916b515f3ecf7c578aace373b13a44342f09b',
@@ -109,7 +115,8 @@ def resource_id(relative):
 
 def generated(native):
     sources = sorted(path for path in native if Path(path).suffix in (".cc", ".mm") and not Path(path).stem.endswith(("_test", "_unittest")))
-    core_sources = ["actions/kumo_preferences_core.cc", "network/kumo_network_admission_wait.cc"]
+    core_sources = ["actions/kumo_preferences_core.cc", "network/kumo_network_admission_wait.cc",
+                    "network/kumo_url_loader_factory.cc"]
     require(all(path in sources for path in core_sources), "Required native testable cores are missing")
     sources = [path for path in sources if path not in core_sources]
     headers = sorted(path for path in native if Path(path).suffix == ".h")
@@ -129,16 +136,16 @@ def generated(native):
     lines = ["# " + MARKER, 'import("//testing/test.gni")', 'assert(is_mac)', 'source_set("headers") {',
              "  public = " + json.dumps(headers), '  public_deps = [ "//base", "//content/public/browser" ]', "}",
              'source_set("core") {', "  sources = " + json.dumps(core_sources),
-             '  public = [ "actions/kumo_preferences.h", "network/kumo_network_admission.h" ]',
+             '  public = [ "actions/kumo_preferences.h", "network/kumo_network_admission.h", "network/kumo_url_loader_factory.h" ]',
              '  public_deps = [ "//base" ]',
-             '  deps = [ "//components/pref_registry", "//components/prefs", "//url" ]', "}",
+             '  deps = [ "//components/pref_registry", "//components/prefs", "//mojo/public/cpp/bindings", "//net", "//services/network/public/cpp", "//services/network/public/mojom", "//url" ]', "}",
              'source_set("impl") {', "  sources = " + json.dumps(sources),
              '  public_deps = [ ":headers", ":core" ]', "  deps = " + json.dumps(deps),
              '  frameworks = [ "AppKit.framework", "Security.framework", "Foundation.framework" ]', "}", ""]
     if tests:
         lines += ['source_set("unit_tests") {', '  testonly = true',
                   "  sources = " + json.dumps(tests),
-                  '  deps = [ ":core", "//base/test:test_support", "//components/prefs", "//components/sync_preferences:test_support", "//testing/gtest" ]', "}", ""]
+                  '  deps = [ ":core", "//base/test:test_support", "//components/prefs", "//components/sync_preferences:test_support", "//mojo/core/embedder", "//mojo/public/cpp/bindings", "//net", "//net/traffic_annotation:test_support", "//services/network/public/cpp", "//services/network/public/mojom", "//testing/gtest", "//url" ]', "}", ""]
     if tests:
         lines += ['test("kumo_native_tests") {',
                   '  deps = [ ":unit_tests", "//base/test:run_all_unittests" ]', "}", ""]
@@ -230,17 +237,48 @@ def transform(inputs, native):
     }
   }
 '''
-        return once(t, anchor, anchor + gate)
+        t = once(t, anchor, anchor + gate)
+        return once(t, 'void ChromeContentBrowserClient::AllowWebSocketConnection(',
+            'void ChromeContentBrowserClient::WillFinalizeURLLoaderFactory(\n'
+            '    content::BrowserContext* context, network::URLLoaderFactoryBuilder& builder,\n'
+            '    network::mojom::URLLoaderFactoryOverride* factory_override) {\n'
+            '  // '+MARKER+': after extension and DevTools URL rewriting, including internal overrides.\n'
+            '  kumo::ProxyDomainURLLoaderFactory(Profile::FromBrowserContext(context), builder, factory_override);\n'
+            '}\n\nvoid ChromeContentBrowserClient::AllowWebSocketConnection(')
     edit("chrome/browser/chrome_content_browser_client.cc", network_admission)
     edit("chrome/browser/chrome_content_browser_client.h", lambda t: once(t,
         '  bool WillInterceptWebSocket(content::RenderFrameHost* frame) override;',
-        '  // '+MARKER+'\n  void AllowWebSocketConnection(content::BrowserContext* context, const GURL& url,\n      base::OnceCallback<void(bool)> callback) override;\n  bool WillInterceptWebSocket(content::RenderFrameHost* frame) override;'))
+        '  // '+MARKER+'\n  void WillFinalizeURLLoaderFactory(content::BrowserContext* context,\n      network::URLLoaderFactoryBuilder& builder,\n      network::mojom::URLLoaderFactoryOverride* factory_override) override;\n  void AllowWebSocketConnection(content::BrowserContext* context, const GURL& url,\n      base::OnceCallback<void(bool)> callback) override;\n  bool WillInterceptWebSocket(content::RenderFrameHost* frame) override;'))
     edit("content/public/browser/content_browser_client.h", lambda t: once(t,
         '  // Returns true when the embedder wants to intercept a websocket connection.',
+        '  // '+MARKER+': final factory policy after embedder and DevTools rewriting.\n  // Keep existing override/CORS/header policy; an override target pipe can be wrapped.\n  // Default implementation is a no-op. Called on UI with the owning context.\n  virtual void WillFinalizeURLLoaderFactory(BrowserContext* context,\n      network::URLLoaderFactoryBuilder& builder,\n      network::mojom::URLLoaderFactoryOverride* factory_override);\n\n'
         '  // '+MARKER+': context-aware admission also covers frameless workers.\n  // The callback may run asynchronously on UI. Default embedder policy allows.\n  virtual void AllowWebSocketConnection(BrowserContext* context, const GURL& url,\n      base::OnceCallback<void(bool)> callback);\n\n  // Returns true when the embedder wants to intercept a websocket connection.'))
     edit("content/public/browser/content_browser_client.cc", lambda t: once(t,
         'bool ContentBrowserClient::WillInterceptWebSocket(RenderFrameHost*) {',
+        'void ContentBrowserClient::WillFinalizeURLLoaderFactory(\n'
+        '    BrowserContext* context, network::URLLoaderFactoryBuilder& builder,\n'
+        '    network::mojom::URLLoaderFactoryOverride* factory_override) {}\n\n'
         'void ContentBrowserClient::AllowWebSocketConnection(\n    BrowserContext* context, const GURL& url, base::OnceCallback<void(bool)> callback) {\n  std::move(callback).Run(true); // '+MARKER+'\n}\n\nbool ContentBrowserClient::WillInterceptWebSocket(RenderFrameHost*) {'))
+    edit("content/browser/loader/url_loader_factory_utils.h", lambda t: once(t,
+        '           bool is_for_network_service);\n\n private:\n  raw_ptr<BrowserContext> browser_context_;',
+        '           bool is_for_network_service);\n\n'
+        '  // '+MARKER+': run the final browser policy after DevTools interceptors.\n'
+        '  void RunFinal(network::URLLoaderFactoryBuilder& builder,\n'
+        '                network::mojom::URLLoaderFactoryOverride* factory_override);\n\n'
+        ' private:\n  raw_ptr<BrowserContext> browser_context_;'))
+    edit("content/browser/loader/url_loader_factory_utils.cc", lambda t: once(once(t,
+        '      is_for_network_service);\n}\n\nnamespace {\n\n// Returns (is_navigation, is_download).',
+        '      is_for_network_service);\n}\n\n'
+        'void ContentClientParams::RunFinal(network::URLLoaderFactoryBuilder& builder,\n'
+        '    network::mojom::URLLoaderFactoryOverride* factory_override) {\n'
+        '  GetContentClient()->browser()->WillFinalizeURLLoaderFactory(\n'
+        '      browser_context_.get(), builder, factory_override);\n}\n\n'
+        'namespace {\n\n// Returns (is_navigation, is_download).'),
+        '  if (auto terminal_url_loader_factory =\n          terminal_params.TakeURLLoaderFactory()) {',
+        '  // '+MARKER+': all production URL rewriters have now been installed.\n'
+        '  if (content_client_params)\n'
+        '    content_client_params->RunFinal(factory_builder, factory_override.get());\n\n'
+        '  if (auto terminal_url_loader_factory =\n          terminal_params.TakeURLLoaderFactory()) {'))
     def socket_header(t):
         t = include(t, "base/memory/weak_ptr.h")
         t = once(t, ' private:\n  static void ConnectCalledByContentBrowserClient(', r''' private:
@@ -326,6 +364,28 @@ def transform(inputs, native):
     edit("build/util/branding.gni", lambda t: once(t,
         'chrome_product_full_name = _result.full_name',
         '# '+MARKER+': retain locked raw bundle/framework paths; runtime version_info reads BRANDING directly.\nchrome_product_full_name = _result.full_name\nif (is_mac && _result.full_name == "Kumo") {\n  chrome_product_full_name = "Chromium"\n}'))
+    # User-visible PRODUCT_FULLNAME remains Kumo. These private filesystem
+    # paths must match the locked Chromium GN artifact and Mach-O install names.
+    edit("chrome/app/chrome_exe_main_mac.cc", lambda t: once(once(t,
+        '      "../../../../" PRODUCT_FULLNAME_STRING " Framework";',
+        '      "../../../../Chromium Framework";'),
+        '      "../Frameworks/" PRODUCT_FULLNAME_STRING\n      " Framework.framework/Versions/" CHROME_VERSION_STRING\n      "/" PRODUCT_FULLNAME_STRING " Framework";',
+        '      "../Frameworks/Chromium Framework.framework/Versions/" CHROME_VERSION_STRING\n      "/Chromium Framework";'))
+    def mac_runtime_artifact_names(t):
+        for before, after in (
+            ('FPL(PRODUCT_FULLNAME_STRING);', 'FPL("Chromium");'),
+            ('FPL(PRODUCT_FULLNAME_STRING " Helper");', 'FPL("Chromium Helper");'),
+            ('FPL(PRODUCT_FULLNAME_STRING ".app/Contents/MacOS/" PRODUCT_FULLNAME_STRING);',
+             'FPL("Chromium.app/Contents/MacOS/Chromium");'),
+            ('FPL(PRODUCT_FULLNAME_STRING\n        " Helper.app/Contents/MacOS/" PRODUCT_FULLNAME_STRING " Helper");',
+             'FPL("Chromium Helper.app/Contents/MacOS/Chromium Helper");'),
+            ('FPL(PRODUCT_FULLNAME_STRING " Framework.framework");',
+             'FPL("Chromium Framework.framework");'),
+            ('FPL(PRODUCT_FULLNAME_STRING " Framework");', 'FPL("Chromium Framework");'),
+        ):
+            t = once(t, before, after)
+        return t
+    edit("chrome/common/chrome_constants.cc", mac_runtime_artifact_names)
     def brand_messages(t):
         def replace(match):
             name, body = match.group(2), match.group(3)
@@ -333,6 +393,20 @@ def transform(inputs, native):
             return match.group(1) + body.replace('Chromium', 'Kumo') + match.group(4)
         return re.sub(r'(<message\b[^>]*\bname="([^"]+)"[^>]*>)(.*?)(</message>)', replace, t, flags=re.S)
     edit("chrome/app/chromium_strings.grd", brand_messages)
+    edit("chrome/app/settings_strings.grdp", lambda t: once(t,
+        '''<message name="IDS_SETTINGS_PEOPLE" desc="Name of the settings page which manages the user's relationship to Google.">
+      You and Google
+    </message>''',
+        '''<message name="IDS_SETTINGS_PEOPLE" desc="Name of the settings page which manages the user's relationship to Google.">
+      Your profile
+    </message>'''))
+    edit("chrome/app/settings_chromium_strings.grdp", lambda t: once(t,
+        '''<message name="IDS_SETTINGS_ABOUT_PROGRAM" desc="Menu title for the About Chromium page.">
+        About Chromium
+      </message>''',
+        '''<message name="IDS_SETTINGS_ABOUT_PROGRAM" desc="Menu title for the About Chromium page.">
+        About Kumo
+      </message>'''))
     edit("chrome/test/BUILD.gn", lambda t: once(t,
         '    "//chrome/browser:core_unit_tests",',
         '    "//chrome/browser:core_unit_tests",\n    "//chrome/browser/kumo:unit_tests", # '+MARKER))

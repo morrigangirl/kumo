@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 import unittest
@@ -136,6 +137,40 @@ class PinnedNativeIntegrationTests(unittest.TestCase):
         transport = text[text.index('void ChromeContentBrowserClient::WillCreateWebTransport('):]
         self.assertLess(transport.index('protection->ShouldBlock(url)'), transport.index('web_request_api->ProxyWebTransport('))
 
+    def test_final_factory_admission_follows_all_extension_request_rewriters(self):
+        before = (self.src/'chrome/browser/chrome_content_browser_client.cc').read_text()
+        def factory_body(text):
+            function = text[text.index('void ChromeContentBrowserClient::WillCreateURLLoaderFactory('):]
+            return function[:function.index('\n}\n')]
+        overlay.apply_overlay(self.src)
+        text = (self.src/'chrome/browser/chrome_content_browser_client.cc').read_text()
+        self.assertEqual(factory_body(before), factory_body(text))
+        self.assertEqual(text.count('kumo::ProxyDomainURLLoaderFactory('), 1)
+        self.assertIn('builder, factory_override);', text)
+        internal = (self.src/'content/browser/loader/url_loader_factory_utils.cc').read_text()
+        self.assertLess(internal.index('devtools_params->Run('), internal.index('content_client_params->RunFinal('))
+        self.assertLess(internal.index('content_client_params->RunFinal('), internal.index('terminal_params.TakeURLLoaderFactory()'))
+        self.assertIn('browser_context_.get(), builder, factory_override);', internal)
+        default = (self.src/'content/public/browser/content_browser_client.cc').read_text()
+        self.assertIn('network::mojom::URLLoaderFactoryOverride* factory_override) {}', default)
+        gn = (self.src/'chrome/browser/kumo/BUILD.gn').read_text()
+        core = gn.split('source_set("core")', 1)[1].split('source_set("impl")', 1)[0]
+        impl = gn.split('source_set("impl")', 1)[1].split('source_set("unit_tests")', 1)[0]
+        self.assertIn('network/kumo_url_loader_factory.cc', core)
+        self.assertNotIn('network/kumo_url_loader_factory.cc', impl)
+
+    def test_settings_profile_and_about_labels_are_narrowly_branded(self):
+        before = {name: (self.src/name).read_text() for name in
+            ['chrome/app/settings_strings.grdp', 'chrome/app/settings_chromium_strings.grdp']}
+        overlay.apply_overlay(self.src)
+        people = (self.src/'chrome/app/settings_strings.grdp').read_text()
+        about = (self.src/'chrome/app/settings_chromium_strings.grdp').read_text()
+        self.assertEqual(people, before['chrome/app/settings_strings.grdp'].replace(
+            '\n      You and Google\n', '\n      Your profile\n', 1))
+        self.assertEqual(about, before['chrome/app/settings_chromium_strings.grdp'].replace(
+            '\n        About Chromium\n', '\n        About Kumo\n', 1))
+        self.assertIn('About Chrome for Testing', about)
+
     def test_old_product_is_suppressed_at_load_and_universal_admission(self):
         overlay.apply_overlay(self.src)
         installed = (self.src/'chrome/browser/extensions/installed_loader.cc').read_text()
@@ -184,6 +219,42 @@ class PinnedNativeIntegrationTests(unittest.TestCase):
         self.assertIn('@click="${this.onActionClick}"', template)
         self.assertNotIn('@click=${() =>', template)
         self.assertNotIn('@change=${(e: Event) =>', template)
+
+    def test_mac_runtime_paths_match_artifacts_while_product_brand_stays_kumo(self):
+        overlay.apply_overlay(self.src)
+        brand = (self.src/'chrome/app/theme/chromium/BRANDING').read_text()
+        self.assertIn('PRODUCT_FULLNAME=Kumo', brand)
+        gn = (self.src/'build/util/branding.gni').read_text()
+        self.assertIn('chrome_product_full_name = "Chromium"', gn)
+        loader = (self.src/'chrome/app/chrome_exe_main_mac.cc').read_text()
+
+        def loader_paths(source):
+            source = source.replace('PRODUCT_FULLNAME_STRING', '"Kumo"')
+            source = source.replace('CHROME_VERSION_STRING', '"'+overlay.VERSION+'"')
+            return [''.join(re.findall(r'"([^"\n]*)"', expression)) for expression in
+                    re.findall(r'static constexpr char rel_path\[\] =\s*([^;]+);', source)]
+
+        paths = loader_paths(loader)
+        self.assertEqual(paths, ['../../../../Libraries/librenderer.dylib',
+                                '../../../../Chromium Framework',
+                                '../Frameworks/Chromium Framework.framework/Versions/'+overlay.VERSION+'/Chromium Framework'])
+        # The original product-macro path is wrong once visible branding is Kumo.
+        self.assertNotEqual(loader_paths(self.originals['chrome/app/chrome_exe_main_mac.cc'].decode())[-1], paths[-1])
+        constants = (self.src/'chrome/common/chrome_constants.cc').read_text()
+        for name in ['Chromium', 'Chromium Helper', 'Chromium.app/Contents/MacOS/Chromium',
+                     'Chromium Helper.app/Contents/MacOS/Chromium Helper',
+                     'Chromium Framework.framework', 'Chromium Framework']:
+            self.assertIn('FPL("'+name+'")', constants)
+        self.assertNotIn('PRODUCT_FULLNAME_STRING', constants)
+        # When a compiled fixture exists, exercise the computed paths against its
+        # actual main/helper artifact tree, including every ordinary helper.
+        app = PREPARED/'out/Default/Chromium.app'
+        if app.is_dir():
+            self.assertTrue((app/'Contents/MacOS'/paths[-1]).is_file())
+            framework = app/'Contents/Frameworks/Chromium Framework.framework/Versions'/overlay.VERSION
+            for suffix in ['', ' (Renderer)', ' (GPU)', ' (Alerts)']:
+                binary_folder = framework/('Helpers/Chromium Helper'+suffix+'.app/Contents/MacOS')
+                self.assertTrue((binary_folder/paths[1]).is_file(), suffix)
 
 
 if __name__ == '__main__': unittest.main()

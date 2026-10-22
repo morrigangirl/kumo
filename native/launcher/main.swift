@@ -94,6 +94,29 @@ func retireLegacyHosts(_ directory: URL) throws {
     }
 }
 
+func browserArguments(_ arguments: [String], fixedFlags: [String]) throws -> [String] {
+    let invalid = bootstrapFailure("Kumo accepts website or file addresses. Configure browser features in Settings.")
+    let restarts = arguments.filter { $0 == "--restart" }.count
+    let background = arguments.filter { $0 == "--no-startup-window" }.count
+    if restarts > 0 || background > 0 {
+        // Chromium copies the current switch map on relaunch. A foreground
+        // relaunch then appends --restart again, so later restarts contain two.
+        // Background relaunch removes the old no-startup-window before adding
+        // one, and can retain one restart from an earlier foreground launch.
+        // This normalizes exact fixed values; it does not authenticate a caller.
+        guard (background == 0 && (1...2).contains(restarts)) ||
+              (background == 1 && (0...1).contains(restarts)),
+              arguments.count == fixedFlags.count + restarts + background,
+              fixedFlags.allSatisfy({ flag in arguments.filter { $0 == flag }.count == 1 }) else { throw invalid }
+        return (background == 1 ? ["--no-startup-window"] : []) + (restarts > 0 ? ["--restart"] : [])
+    }
+    guard arguments.allSatisfy({ value in
+        guard !value.hasPrefix("-"), let url = URL(string: value), let scheme = url.scheme?.lowercased() else { return false }
+        return ["http", "https", "file"].contains(scheme)
+    }) else { throw invalid }
+    return arguments
+}
+
 func run() throws {
     let contents = Bundle.main.bundleURL.appendingPathComponent("Contents")
     let engine = contents.appendingPathComponent("MacOS/Chromium")
@@ -115,10 +138,7 @@ func run() throws {
         FileHandle.standardOutput.write(data); return
     }
     guard !arguments.contains(where: { $0.hasPrefix("--kumo-") }) else { throw bootstrapFailure("Open Kumo Settings to configure browser features.") }
-    guard arguments.allSatisfy({ value in
-        guard !value.hasPrefix("-"), let url = URL(string: value), let scheme = url.scheme?.lowercased() else { return false }
-        return ["http", "https", "file"].contains(scheme)
-    }) else { throw bootstrapFailure("Kumo accepts website or file addresses. Configure browser features in Settings.") }
+    let forwardedArguments = try browserArguments(arguments, fixedFlags: flags)
     guard fm.isExecutableFile(atPath: engine.path) else { throw bootstrapFailure("The Kumo browser engine is missing. Reinstall Kumo.") }
     try launchUpdater(contents: contents, manual: false)
     let lease = try acquireBrowserUpdateLock(contents: contents)
@@ -135,7 +155,7 @@ func run() throws {
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: preferences.path)
     }
     try retireLegacyHosts(profile.appendingPathComponent("NativeMessagingHosts", isDirectory: true))
-    let command = [engine.path] + flags + arguments
+    let command = [engine.path] + flags + forwardedArguments
     var pointers = command.map { strdup($0) } + [nil]
     defer { for pointer in pointers { free(pointer) } }
     pointers.withUnsafeMutableBufferPointer { argv in _ = execv(engine.path, argv.baseAddress!) }

@@ -14,7 +14,7 @@ The first published, notarized Kumo 0.1.0 used **155.0.8059.84**. The earlier ch
 
 The browser owns session-only agent grants and document/origin checks. Its fixed signed child runs the bundled Node runtime with JIT and WebAssembly disabled over inherited private pipes; the local MCP socket accepts agent clients only. Node is pinned separately in `config/node-runtime-lock.json` and bundled with its license. Browser users need no external Node installation. Protection preferences migrate only validated settings from the retired product ID; existing explicit opt-outs remain, while new PhishLang preferences default on. Migration does not copy credentials or old agent grants, and retirement preserves extension storage and unrelated password-plugin hosts.
 
-The local in-progress workspace is `build/source-156.0.8078.47-native001`. It is a separate reviewed source tree, not a relabeled historical receipt. Runtime preparation and packaging follow the commands below; the exact artifact must pass the [native runtime harness](#native-browser-verification) before any completion claim.
+The local native workspace is `build/source-156.0.8078.47-native001`. It is a separate reviewed source tree with a completed build receipt. Runtime preparation and packaging follow the commands below; the exact artifact must pass the [native runtime harness](#native-browser-verification) before any release qualification claim.
 
 ## Historical completed 0.1.1 replacement build
 
@@ -175,6 +175,7 @@ Run local unit/overlay checks before building; they do not establish a completed
 python3 -B -m unittest scripts.test_browser_integration_overlay scripts.test_native_protection scripts.test_agent_pipe scripts.test_agent_runtime scripts.test_package_guards -v
 npm test
 node scripts/smoke-native-browser.mjs --self-test
+node scripts/smoke-native-domains.mjs --self-test
 ```
 
 After the normal source build succeeds, build and run the focused compiled test target before packaging. Set the source path to the exact prepared workspace being released:
@@ -187,7 +188,7 @@ PATH="$KUMO_NATIVE_SOURCE/third_party/llvm-build/Release+Asserts/bin:$PATH" \
   --test-launcher-jobs=1 --test-launcher-retry-limit=0
 ```
 
-All 13 focused tests passed locally: eight exercise real native preference validation, safe URL/wallpaper handling and migration precedence; five exercise domain admission, deferred initialization, timeout and destroyed-context rejection. Building this separate test target does not replace or modify the completed browser app or its source receipt. The release workflow runs the same target and requires success before packaging. These focused results do not establish browser runtime or installer qualification.
+All 33 focused tests passed in one iteration with no retries against amended source fingerprint `c64192d7cdf13367a1cceef4a09bd569b35cef1673ac5d4bd56c4ed44a805192`: eight preference tests, five admission tests and twenty real Mojo factory tests. Factory coverage includes final rewritten destinations, redirect overrides, cancellation, clones, response forwarding and upload acknowledgments. The retained earlier attempts exposed a missing test-only dependency and two invalid test fixtures; their exact corrections and the successful linked execution are recorded in the [qualification audit](security-audits/2026-10-21/0.2.0-native-qualification.md). Building this separate test target does not replace or modify the completed browser app or its source receipt. The release workflow runs the same target and requires success before packaging. These focused results do not establish browser runtime or installer qualification.
 
 After a successful normal source build and source-receipt-checked packaging, select the exact signed app explicitly:
 
@@ -195,10 +196,23 @@ After a successful normal source build and source-receipt-checked packaging, sel
 npm install --prefix .cache/qa --no-save --package-lock=false --ignore-scripts playwright-core@1.64.1
 KUMO_QA_APP="$PWD/dist/Kumo.app" \
 KUMO_QA_OUTPUT="$PWD/.cache/qa/native-browser-$(date -u +%Y%m%dT%H%M%SZ)" \
+KUMO_QA_HEADFUL=1 \
 node scripts/smoke-native-browser.mjs --run
 ```
 
-The evidence directory must not already exist. This harness checks compiled Settings and new-tab behavior, trusted preference actions and rejection without partial mutation, default-on PhishLang with actual model readiness, local domain blocking for pages/resources/redirects/worker fetch/WebSocket, ordinary third-party extension APIs, and browser-owned agent grants, revocation, sensitive-field exclusions and a controlled navigation race. It checks app signatures before and after and uses disposable browser/client homes and a mock Keychain. A narrow Claude setup fixture requires independent Foundation-home proof before its actual Settings button is used; it checks hidden-document completion and automatic helper-status refresh, mutating and restoring only the owned temporary client JSON. It never launches desktop clients, configures personal accounts, invokes Codex setup, installs antivirus or starts an update. Scanner status may inspect canonical local antivirus state read-only. Native menu inspection and the actual full installer remain separate checks. The prepared harness is not evidence that the pending package has passed.
+The evidence directory must not already exist. The headed release check requires an unlocked interactive Mac desktop. A headless run explicitly records hidden-document completion as untested; it cannot replace that gate. This harness checks compiled Settings and new-tab behavior, trusted preference actions and rejection without partial mutation, default-on PhishLang with actual model readiness, local domain blocking for pages/resources/redirects/worker fetch/WebSocket, ordinary third-party extension APIs, and browser-owned agent grants, revocation, sensitive-field exclusions and a controlled navigation race. It checks app signatures before and after and uses disposable browser/client homes and a mock Keychain. A narrow Claude setup fixture requires independent Foundation-home proof before its actual Settings button is used; it checks hidden-document completion and automatic helper-status refresh, mutating and restoring only the owned temporary client JSON. The separate `smoke-native-phishing.mjs --run` suite uses the same app/output selectors and exercises real native warnings, continue/leave controls and the protection toggle headlessly. Neither harness launches desktop clients, configures personal accounts, invokes Codex setup, installs antivirus or starts an update. Scanner status may inspect canonical local antivirus state read-only. Native menu inspection and the actual full installer remain separate checks. The prepared harness is not evidence that the pending package has passed.
+
+Run the separate final-destination suite headlessly against the same freshly built app. Its source fingerprint is computed from the current trusted repository inputs independently of the selected app's embedded receipt:
+
+```sh
+KUMO_QA_APP="$PWD/dist/Kumo.app" \
+KUMO_QA_EXPECTED_SOURCE_INPUTS="$(PYTHONPATH=scripts python3 -c 'from pathlib import Path; from build_receipt import current_input_digest; print(current_input_digest(Path.cwd()))')" \
+KUMO_QA_OUTPUT="$PWD/.cache/qa/native-domains-$(date -u +%Y%m%dT%H%M%SZ)" \
+KUMO_QA_HEADFUL=0 \
+node scripts/smoke-native-domains.mjs --run
+```
+
+This suite pairs allowed and blocked loopback requests across fetch, XHR, images, redirects, keepalive, dedicated/shared/service workers, ordinary extension redirects, WebSocket and main navigation. Separate, explicitly scoped debugging-tool rewrites check the final rewritten URL. It also checks the native protection toggle and records server contacts before assertions; a timeout cannot count as successful blocking. It does not establish HTTP/3 or WebTransport runtime behavior, ES-module imports or post-shutdown keepalive behavior. The workflow requires this suite before notarization.
 
 The older extension-oriented smoke scripts and audits below qualify their original release inputs only. They are not the native 0.2 acceptance suite. Source build completion also does not imply production signing or publication: the [GitHub release workflow](github-releases.md) separately notarizes the browser, builds the complete standard Apple installer and verifies that its browser identity matches the update ZIP before allowing a six-asset 0.2 release.
 

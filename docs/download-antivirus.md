@@ -4,31 +4,23 @@ Kumo's source-built Chromium engine holds ordinary downloads before completion, 
 
 ## Setup and status
 
-Use **Kumo Setup.app** for a complete installation on an Apple Silicon Mac running macOS 13 or later. Extract the Setup ZIP, open **Kumo Setup**, click **Install**, and approve macOS's single administrator prompt. Setup closes Kumo normally, installs the browser and original Cisco antivirus package, prepares the current account's signed virus definitions, and enables automatic updates. It checks the installed scanner with a harmless file before offering **Open Kumo**. No Terminal command, Homebrew, or separate Apple Installer session is needed.
+**Kumo 0.2 is an unreleased candidate.** The currently published 0.1.2 browser ZIP uses the earlier controls and separate antivirus setup; it does not contain the new complete installer. The native 0.2 app and standard package still need their final release and target-Mac installation gates. Historical checks are retained in the [0.1.2 production record](security-audits/2026-10-21/0.1.2-production-release.md).
 
-The installer includes the existing production browser with its PhishLang model and helper. Local phishing warnings remain optional and off by default; website access is requested when they are enabled. Installer construction and its trust checks are documented in [native/installer/README.md](../native/installer/README.md). The new setup flow does not by itself establish a completed administrator installation or hardware qualification on a MacBook Air.
+Once 0.2 is qualified and published, use its **standard Kumo `.pkg` installer** for first installation or missing-dependency repair on an Apple Silicon Mac running macOS 13 or later. Open the package in Apple's Installer and approve its administrator prompt. The package includes Kumo with PhishLang and its bundled agent runtime, the original Cisco antivirus components, signed definitions and the current user's scheduled definition updates. Its installer checks a harmless scan before reporting setup ready. The internal `Kumo Setup.app` is not a standalone installer; opening it directly or using its retired administrator route does not install Kumo. No Terminal, Homebrew or separately installed Node is required for the standard package.
 
-To inspect scanner status, open the **gear on Kumo's new-tab page → Privacy & security → Download antivirus**. This card belongs to Kumo's start page; Chromium's regular Settings page does not contain it.
+The **browser ZIP and signed Sparkle app updates contain only the app and its bundled resources**, including PhishLang and Node. They do not install or repair `/usr/local/clamav/`, the user's virus definitions or their update schedule. A browser-only update preserves those existing dependencies. If they are missing, ordinary downloads remain blocked until protection is ready; use the complete `.pkg` for the full installation/repair path.
 
-### Repair and advanced setup
+In the native 0.2 browser, open **Settings → Kumo → Download protection** (`chrome://settings/kumo`) to inspect the scanner status. **Refresh status** rereads the helper status. **Install or repair protection** starts the verified antivirus setup flow; **Update definitions** refreshes the current user's databases. If the repair action opens Apple's Installer for the verified Cisco component, complete that installation, then return to Kumo and choose **Update definitions**. These controls do not require copied commands.
 
-The bundled command-line setup remains available for repairs and browser-only ZIP installations. This command locates the installed app through macOS:
+Messages such as `engine-not-installed`, `engine-verification-failed`, `definitions-missing`, `definitions-stale` or `definitions-verification-failed` mean that scanning is unavailable; they are not successful protection results. The page also reports website-domain protection and PhishLang separately. For new/unset 0.2 preferences, PhishLang starts enabled; an existing explicit off choice is preserved. Model warnings and antivirus scanning are different layers.
 
-```sh
-open -n -b app.kumo.browser --args --kumo-scanner-setup
-```
+For browser updates, use **Settings → Kumo → Updates → Check for updates**. Its **Release history** link opens [Kumo GitHub Releases](https://github.com/morrigangirl/kumo/releases), where the separate complete installer belongs after publication. Checking for an app update does not install antivirus dependencies. Installer construction, payload verification and remaining acceptance limits are documented in [native/installer/README.md](../native/installer/README.md).
 
-The repair tool downloads the exact pinned ClamAV 1.5.4 universal package, verifies its hash and Cisco Installer signature, and opens Apple's Installer when needed. Complete that installation, then run the repair command again to initialize definitions. Kumo uses untouched vendor tools at `/usr/local/clamav/`. The complete Kumo Setup app carries the original vendor package; the browser app uses the separately installed runtime. Neither flow modifies Cisco's binaries or signatures. Users need no Python, Homebrew or Xcode.
+### Definition updates and readiness
 
-Definitions are private to the current user in `~/Library/Application Support/KumoSecurity/ClamAV/`. Successful initialization configures the user LaunchAgent `app.kumo.clamav-definitions` to run verified FreshClam at login and every eight hours. It runs independently of Kumo without a resident scanning daemon. Status reports whether that exact schedule is configured and whether current definitions are usable; configuration does not guarantee the last scheduled update succeeded.
+Kumo uses the pinned, authenticated ClamAV 1.5.4 tools at `/usr/local/clamav/`, preserving Cisco's binaries and signatures. Definitions are private to the current user in `~/Library/Application Support/KumoSecurity/ClamAV/`. Successful initialization configures the user LaunchAgent `app.kumo.clamav-definitions` to run verified FreshClam at login and every eight hours. It runs independently of Kumo without a resident scanning daemon. Status reports whether that exact schedule is configured and whether current definitions are usable; configuration does not guarantee the last scheduled update succeeded.
 
-Update definitions explicitly with:
-
-```sh
-open -n -b app.kumo.browser --args --kumo-scanner-update
-```
-
-The status card distinguishes ready, setup required and unavailable definitions. Missing helpers, invalid vendor files, definitions older than 72 hours, scanner errors, malware, encrypted archives, exceeded limits and timeouts block completion. They never become a successful scan. A download interrupted by this gate requires a fresh download and scan.
+Missing helpers, invalid vendor files, definitions older than 72 hours, scanner errors, malware, encrypted archives, exceeded limits and timeouts block completion. They never become a successful scan. A download interrupted by this gate requires a fresh download and scan. Actual administrator installation, upgrade/rollback and whole-browser performance on an 8 GB Mac remain separate target-Mac acceptance work; this setup documentation does not claim those checks passed.
 
 ## Local processing and limits
 

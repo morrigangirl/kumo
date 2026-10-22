@@ -83,6 +83,92 @@ class NativeLauncher(unittest.TestCase):
         self.assertEqual(sum(x.startswith('--user-data-dir=') for x in arguments),1)
         self.assertFalse((self.profile / 'ExtensionRuntime').exists())
 
+    def test_chromium_foreground_background_and_repeated_restarts_regenerate_fixed_flags_once(self):
+        self.prepare_engine()
+        fixed = self.config['flags']
+        # Pinned GetRelaunchCommandLine copies the sorted switch map, removes
+        # no-startup-window on autostart, then appends the foreground restart.
+        # AppendSwitchNative adds argv even when its map key already exists.
+        foreground = sorted(fixed) + ['--restart']
+        repeated_foreground = sorted(set(foreground)) + ['--restart']
+        cases = [
+            ([], []),
+            (foreground, ['--restart']),
+            (repeated_foreground, ['--restart']),
+            (['--no-startup-window'] + sorted(fixed), ['--no-startup-window']),
+            (['--no-startup-window'] + sorted(set(foreground)), ['--no-startup-window', '--restart']),
+            (list(reversed(fixed)) + ['--restart'], ['--restart']),
+        ]
+        for incoming, normalized in cases:
+            with self.subTest(incoming=incoming):
+                result = self.launch(*incoming)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                actual = json.loads(result.stdout)
+                self.assertEqual(actual, fixed + normalized)
+                self.assertEqual(sum(x.startswith('--user-data-dir=') for x in actual), 1)
+                # Feed the actual accepted engine argv through the next
+                # source-derived relaunch, proving normalization stays stable.
+                next_foreground = sorted(set(actual) - {'--no-startup-window'}) + ['--restart']
+                again = self.launch(*next_foreground)
+                self.assertEqual(again.returncode, 0, again.stderr)
+                self.assertEqual(json.loads(again.stdout), fixed + ['--restart'])
+                previous = actual
+                for _ in range(2):
+                    next_background = ['--no-startup-window'] + sorted(set(previous) - {'--no-startup-window'})
+                    again = self.launch(*next_background)
+                    self.assertEqual(again.returncode, 0, again.stderr)
+                    previous = json.loads(again.stdout)
+                    self.assertEqual(previous, fixed + ['--no-startup-window'] + (['--restart'] if '--restart' in actual else []))
+
+    def test_invalid_restart_envelopes_fail_before_profile_or_host_mutation(self):
+        self.prepare_engine()
+        fixed = self.config['flags']
+        foreground = sorted(fixed) + ['--restart']
+        altered_profiles = ['/private/tmp/not-the-owned-profile', str(self.profile) + '/', str(self.profile) + '/../Kumo']
+        cases = [
+            ['--restart'], ['--no-startup-window'], fixed,
+            fixed + ['--restart', '--restart', '--restart'],
+            fixed + ['--no-startup-window', '--no-startup-window'],
+            fixed + ['--no-startup-window', '--restart', '--restart'],
+            fixed + ['--restart=true'], fixed + ['--no-startup-window=true'],
+            fixed[:-1] + ['--restart'], foreground + [fixed[1]],
+            foreground + ['https://example.invalid/'], foreground + ['file:///private/tmp/owned.txt'],
+            foreground + ['/private/tmp/path'], foreground + ['--'],
+        ]
+        for forbidden in ['--remote-debugging-port=9222', '--remote-debugging-pipe', '--no-sandbox',
+                          '--disable-web-security', '--load-extension=/private/tmp/extension',
+                          '--restore-last-session', '--kumo-connect-claude-desktop', '--unknown']:
+            cases.append(foreground + [forbidden])
+        for path in altered_profiles:
+            cases.append([f'--user-data-dir={path}', *fixed[1:], '--restart'])
+        for flag in ['--disable-sync=false', '--no-first-run=true', '--no-default-browser-check=true',
+                     '--extension-mime-request-handling=always-install']:
+            key = flag.split('=', 1)[0]
+            cases.append([x for x in fixed if x.split('=', 1)[0] != key] + [flag, '--restart'])
+        for incoming in cases:
+            with self.subTest(incoming=incoming):
+                self.assertFalse(self.profile.exists())
+                result = self.launch(*incoming)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertEqual(result.stdout, '')
+                self.assertFalse(self.profile.exists())
+
+    def test_invalid_restart_does_not_retire_existing_hosts_or_replace_preferences(self):
+        self.prepare_engine()
+        hosts = self.profile / 'NativeMessagingHosts'
+        hosts.mkdir(parents=True, mode=0o700)
+        own_host = hosts / 'com.kumo.agent_bridge.json'
+        own_host.write_bytes(b'unchanged legacy registration until valid launch')
+        preferences = self.profile / 'Default/Preferences'
+        preferences.parent.mkdir()
+        preferences.write_bytes(b'{"owner":"preserve on rejected restart"}')
+        for extra in ['https://example.invalid/', '--remote-debugging-port=9222', '--kumo-connect-codex-desktop']:
+            result = self.launch(*self.config['flags'], '--restart', extra)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, '')
+            self.assertEqual(own_host.read_bytes(), b'unchanged legacy registration until valid launch')
+            self.assertEqual(preferences.read_bytes(), b'{"owner":"preserve on rejected restart"}')
+
     def test_external_flags_other_schemes_and_mixed_update_requests_fail_before_engine(self):
         self.prepare_engine()
         for option in ['--no-sandbox','--disable-web-security','--remote-debugging-port=9222','--user-data-dir=/tmp/other','javascript:alert(1)','data:text/html,hello','chrome://settings','not-a-url']:

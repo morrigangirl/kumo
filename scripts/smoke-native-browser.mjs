@@ -4,7 +4,7 @@
 // The actual signed app is never copied or modified.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {execFile} from 'node:child_process';
+import {execFile, spawn} from 'node:child_process';
 import {createServer} from 'node:http';
 import {createConnection} from 'node:net';
 import {mkdtemp, mkdir, readFile, writeFile, realpath, lstat, readdir, rm} from 'node:fs/promises';
@@ -16,10 +16,72 @@ const execute = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const legacyId = 'eldkgppmnhligdekahicdcdndcoongio';
 const blockedHost = 'blocked.kumo-qa.invalid';
+const fixtureResolverRules = `MAP ${blockedHost} 127.0.0.1, MAP * ^NOTFOUND, EXCLUDE 127.0.0.1`;
 const sha = text => createHash('sha256').update(text).digest('hex');
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const listen = server => new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
 const closeServer = server => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); });
+async function bounded(operation, label, milliseconds = 5000) {
+  let timer;
+  try {
+    return await Promise.race([Promise.resolve().then(operation), new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`QA operation timed out: ${label}`)), milliseconds);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+function navigationReleasedPause(error) {
+  const response = 'Can only perform operation while paused.';
+  return [response, `Protocol error (Debugger.resume): ${response}`,
+    `cdpSession.send: Protocol error (Debugger.resume): ${response}`].includes(error?.message);
+}
+function ownedCDPEndpoint(text) {
+  const [port, target] = text.trim().split('\n');
+  assert(/^\d{1,5}$/.test(port) && +port > 0 && +port < 65536);
+  assert(/^\/devtools\/browser\/[a-zA-Z0-9-]+$/.test(target));
+  return `ws://127.0.0.1:${port}${target}`;
+}
+async function processIdentity(pid) {
+  try {
+    const {stdout} = await execute('/bin/ps', ['-ww', '-p', String(pid), '-o', 'pid=,ppid=,lstart=,comm='], {env:{PATH:'/usr/bin:/bin',LC_ALL:'C',LANG:'C'}});
+    return stdout.trim().replace(/\s+/g, ' ');
+  } catch (error) { if (error.code === 1) return ''; throw error; }
+}
+function sameProcessIdentity(current, original) {
+  return !!current && current.replace(/^(\d+) \d+ /, '$1 ') === original.replace(/^(\d+) \d+ /, '$1 ');
+}
+function allowedOwnedPage(value, origins, extensionId) {
+  if (value === 'about:blank') return true;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return false;
+    if (url.protocol === 'chrome:') return !url.search && !url.hash &&
+      (url.host === 'settings' && url.pathname === '/kumo' ||
+       ['newtab','new-tab-page','kumo-new-tab'].includes(url.host) && url.pathname === '/');
+    if (url.protocol === 'chrome-extension:') return extensionId && url.host === extensionId && url.pathname === '/qa.html';
+    return origins.includes(url.origin);
+  } catch { return false; }
+}
+async function ownedBrowserChildren(browserPid, app) {
+  const {stdout} = await execute('/bin/ps', ['-ww','-axo','pid=,ppid=,lstart=,comm='], {env:{PATH:'/usr/bin:/bin',LC_ALL:'C',LANG:'C'}});
+  return stdout.split('\n').map(line => line.trim().replace(/\s+/g, ' ')).filter(line => {
+    const [pid, parent] = line.split(' '); return /^\d+$/.test(pid) && +parent === browserPid && line.includes(`${app}/Contents/`);
+  }).map(identity => ({pid:+identity.split(' ')[0], identity}));
+}
+async function cleanupDebugger(session, breakpointId, {remove = true, resume = true} = {}, milliseconds = 5000) {
+  const failures = [];
+  // Each operation has its own budget. A stalled removal must never prevent
+  // the independent resume and detach attempts that release the owned renderer.
+  const operations = [
+    ...(remove ? [['Debugger.removeBreakpoint', () => session.send('Debugger.removeBreakpoint', {breakpointId})]] : []),
+    ...(resume ? [['Debugger.resume', () => session.send('Debugger.resume')]] : []),
+    ['CDPSession.detach', () => session.detach()],
+  ];
+  for (const [label, operation] of operations) {
+    try { await bounded(operation, label, milliseconds); }
+    catch (error) { failures.push({operation: label, message: error.message}); }
+  }
+  return failures;
+}
 async function eventually(operation, description, milliseconds = 30000) {
   const end = Date.now() + milliseconds; let last;
   while (Date.now() < end) {
@@ -111,6 +173,24 @@ async function selfTest() {
   assert(!['protection.setup', 'definitions.update', 'agents.connectCodex', 'agents.connectClaude'].some(verb => SAFE_ACTIONS.has(verb)));
   assert.throws(()=>provenClaudeFixture('/private/tmp/unproven-home',null),/Foundation-home proof/);
   assert.match(fixtureHTML(), /section-login ONE-TIME-CODE/);
+  await assert.rejects(bounded(() => new Promise(() => {}), 'synthetic stalled CDP', 5), /QA operation timed out: synthetic stalled CDP/);
+  const cleanupCalls = [];
+  const cleanup = await cleanupDebugger({
+    send(method) { cleanupCalls.push(method); return method === 'Debugger.removeBreakpoint' ? new Promise(() => {}) : Promise.resolve(); },
+    detach() { cleanupCalls.push('detach'); return Promise.resolve(); },
+  }, 'synthetic-breakpoint', {}, 5);
+  assert.deepEqual(cleanupCalls, ['Debugger.removeBreakpoint', 'Debugger.resume', 'detach']);
+  assert.equal(cleanup.length, 1); assert.equal(cleanup[0].operation, 'Debugger.removeBreakpoint');
+  assert(navigationReleasedPause(new Error('cdpSession.send: Protocol error (Debugger.resume): Can only perform operation while paused.')));
+  assert(!navigationReleasedPause(new Error('Target closed')));
+  assert(!navigationReleasedPause(new Error('QA operation timed out: agent resume controlled pause')));
+  assert.equal(ownedCDPEndpoint('54321\n/devtools/browser/owned-fixture\n'), 'ws://127.0.0.1:54321/devtools/browser/owned-fixture');
+  assert.match(fixtureResolverRules, /MAP \* \^NOTFOUND, EXCLUDE 127\.0\.0\.1$/);
+  for (const invalid of ['0\n/devtools/browser/owned', '65536\n/devtools/browser/owned', '9222\nws://remote.invalid/target', '9222\n/devtools/page/not-browser']) assert.throws(() => ownedCDPEndpoint(invalid));
+  assert(allowedOwnedPage('chrome://kumo-new-tab/', ['http://127.0.0.1:1234'], 'fixture'));
+  for (const value of ['https://example.com/', 'chrome://settings/passwords', 'chrome://kumo-new-tab.evil/', 'http://user:secret@127.0.0.1:1234/']) assert(!allowedOwnedPage(value, ['http://127.0.0.1:1234'], 'fixture'));
+  assert(sameProcessIdentity('42 1 Wed Oct 21 21:00:00 2026 owned-helper', '42 2 Wed Oct 21 21:00:00 2026 owned-helper'));
+  assert(!sameProcessIdentity('42 1 Wed Oct 21 21:00:01 2026 owned-helper', '42 2 Wed Oct 21 21:00:00 2026 owned-helper'));
   const directory = await mkdtemp('/private/tmp/kns-');
   try {
     const home = path.join(directory, 'h'); await mkdir(home, {mode: 0o700}); await mkdir(path.join(directory, 'tmp'));
@@ -128,17 +208,24 @@ async function run() {
   assert(process.env.KUMO_QA_APP, 'Set KUMO_QA_APP to the explicitly approved fresh native app');
   assert(process.env.KUMO_QA_OUTPUT, 'Set KUMO_QA_OUTPUT to a new evidence directory');
   const app = await realpath(process.env.KUMO_QA_APP), output = path.resolve(process.env.KUMO_QA_OUTPUT);
+  const headed = process.env.KUMO_QA_HEADFUL === '1';
   assert(app.endsWith('/Kumo.app')); assert(!app.split(path.sep).includes('Applications'), 'Use a separate QA app outside system and user Applications folders');
   await mkdir(output, {recursive: false, mode: 0o700});
   const report = {schemaVersion: 1, app, output, startedAt: new Date().toISOString(), passed: false, checks: [],
+    mode: headed ? 'headed' : 'headless', phases: [],
+    interactiveChecks: {hiddenCompletion: headed ? {required: true, status: 'pending'} :
+      {required: false, status: 'not-run', reason: 'Real hidden-document completion requires an unlocked headed desktop session.'}},
     limits: ['Codex setup, AV setup/update and updater launching are forbidden. Claude setup is exercised only through its actual button after Foundation proves the disposable home; it writes that owned client fixture and managed runtime without launching a client.',
       'Settings updater controls/status are checked; native menu inspection remains a separate manual gate. No update helper window or external update check is opened.',
       'Swift scanner status may inspect its canonical KumoSecurity state read-only; no credential, provider-account or installer action is authorized.']};
   const short = await mkdtemp('/private/tmp/kn-'), home = path.join(short, 'h'), profile = path.join(short, 'p');
   await mkdir(home, {mode: 0o700}); await mkdir(profile, {mode: 0o700}); await mkdir(path.join(output, 'tmp'), {mode: 0o700});
-  const environment = isolatedEnvironment(home, output); let context, connection, before, runtimeSocketPath;
+  const environment = isolatedEnvironment(home, output); let context, browser, browserProcess, browserIdentity, connection, before, runtimeSocketPath;
+  const browserErrors = [];
+  let preserve = false, fixtureExtensionId;
   const errors = [], blockedHits = [], external = [], sockets = new Set();
   let originA, originB;
+  const phase = name => { if (preserve && name !== 'owned-cleanup') throw new Error('Unexpected navigation; owned user session preserved'); report.phases.push({name, at: new Date().toISOString()}); console.log(JSON.stringify({nativeBrowserPhase: name, mode: report.mode})); };
   const serverB = createServer((_request, response) => { response.setHeader('Content-Type', 'text/html'); response.end(fixtureHTML('Other owned origin')); });
   const serverA = createServer((request, response) => {
     if (request.headers.host?.startsWith(blockedHost)) blockedHits.push(request.url);
@@ -150,6 +237,7 @@ async function run() {
   });
   serverA.on('upgrade', (request, socket) => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); if (request.headers.host?.startsWith(blockedHost)) blockedHits.push('WEBSOCKET:'+request.url); socket.destroy(); });
   try {
+    phase('verify-app-and-disposable-home');
     report.homeProof = await verifyFoundationHome(short, home, environment);
     before = await seal(app); report.signatureBefore = before;
     await assert.rejects(lstat(path.join(app, 'Contents/Resources/KumoExtension')), {code: 'ENOENT'});
@@ -162,10 +250,33 @@ async function run() {
     await Promise.all([listen(serverA), listen(serverB)]);
     originA = `http://127.0.0.1:${serverA.address().port}`; originB = `http://127.0.0.1:${serverB.address().port}`;
     const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
-    context = await chromium.launchPersistentContext(profile, {executablePath: engine, headless: process.env.KUMO_QA_HEADFUL !== '1',
-      chromiumSandbox: true, timeout: 90000, ignoreDefaultArgs: ['--disable-extensions'], env: environment,
-      args: [`--load-extension=${extension}`, '--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain', '--password-store=basic', '--no-proxy-server', `--host-resolver-rules=MAP ${blockedHost} 127.0.0.1`], viewport: {width: 1280, height: 1000}});
+    phase('launch-isolated-browser');
+    // Use the same public noDefaults connection as native download QA. The
+    // normal Playwright launch enables a session-scoped focus/visibility
+    // override on every page, which would invalidate the real hidden-tab test.
+    const sdkSource = await readFile(path.join(root, '.cache/qa/node_modules/playwright-core/lib/coreBundle.js'), 'utf8');
+    assert(sdkSource.includes('const skipDefaultOverrides = browserOptions.noDefaults && this._crPage._browserContext === this._crPage._browserContext._browser._defaultContext;'));
+    assert(sdkSource.includes('if (this._isMainFrame() && !skipDefaultOverrides)'));
+    const launchArgs = [`--user-data-dir=${profile}`, ...(!headed ? ['--headless=new'] : []),
+      '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', `--load-extension=${extension}`,
+      '--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain', '--password-store=basic',
+      '--no-proxy-server', '--lang=en-US', '--window-size=1280,1000',
+      `--host-resolver-rules=${fixtureResolverRules}`, 'about:blank'];
+    assert(!launchArgs.some(argument => argument === '--no-sandbox' || argument === '--disable-web-security'));
+    browserProcess = spawn(engine, launchArgs, {env: environment, stdio: ['ignore','ignore','pipe']});
+    browserProcess.stderr.on('data', bytes => { if (browserErrors.join('').length < 131072) browserErrors.push(String(bytes)); });
+    browserProcess.on('error', error => browserErrors.push(error.message));
+    browserIdentity = await processIdentity(browserProcess.pid);
+    assert(browserIdentity.startsWith(`${browserProcess.pid} ${process.pid} `) && browserIdentity.endsWith(engine), 'Spawned browser identity must match the owned PID, parent and exact executable');
+    const endpoint = await eventually(async () => ownedCDPEndpoint(await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')), 'Owned browser loopback CDP endpoint', 60000);
+    browser = await chromium.connectOverCDP(endpoint, {noDefaults:true, timeout:30000});
+    context = browser.contexts()[0]; assert(context, 'Owned default browser context is required');
+    report.launch = {pid:browserProcess.pid, identity:browserIdentity, noDefaults:true, sdkSourceSha256:sha(sdkSource), sandbox:true, loopbackCDP:true, mockKeychain:true};
     context.setDefaultTimeout(20000);
+    const watchPage = page => page.on('framenavigated', frame => {
+      if (frame === page.mainFrame() && !allowedOwnedPage(frame.url(), [originA,originB], fixtureExtensionId)) { preserve=true; report.unexpectedNavigation=true; }
+    });
+    context.pages().forEach(watchPage); context.on('page', watchPage);
     context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
     context.on('request', request => { try { const url = new URL(request.url()); if (['http:', 'https:'].includes(url.protocol) && !['127.0.0.1', blockedHost].includes(url.hostname)) external.push(url.origin); } catch {} });
     await context.route(/^https?:\/\//, route => {
@@ -174,7 +285,21 @@ async function run() {
     });
     const settings = await context.newPage(); await settings.goto('chrome://settings/kumo');
     await settings.locator('settings-kumo-page').waitFor();
-    const status = async () => { await settings.bringToFront(); return settings.evaluate(async () => (await import('chrome://resources/js/cr.js')).sendWithPromise('kumoGetStatus')); };
+    const status = async () => {
+      assert(!preserve, 'Unexpected navigation; owned user session preserved');
+      await settings.bringToFront();
+      await settings.waitForFunction(() => document.visibilityState === 'visible', null, {timeout: 5000});
+      return settings.evaluate(async () => {
+        let timer;
+        try {
+          const {sendWithPromise} = await import('chrome://resources/js/cr.js');
+          return await Promise.race([sendWithPromise('kumoGetStatus'), new Promise((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Native status reply timed out; check that the Mac is unlocked and Settings is visible.')), 5000);
+          })]);
+        } finally { clearTimeout(timer); }
+      });
+    };
+    phase('native-defaults-and-model-health');
     const initial = await eventually(async () => { const s = await status(); return s.protection?.migrationComplete && s.agents?.bridgeConnected ? s : false; }, 'Native migration and private browser channel must become ready', 90000);
     assert.equal(initial.schemaVersion, 1); assert.equal(initial.agents.enabled, false);
     assert.equal(initial.protection.phishing.enabled, true); assert.equal(initial.protection.phishing.desiredEnabled, true);
@@ -196,18 +321,28 @@ async function run() {
     const canonicalHome=await realpath(home);
     const claudeFile=provenClaudeFixture(canonicalHome,report.homeProof);
     await assert.rejects(lstat(claudeFile),{code:'ENOENT'});
-    const hiddenControl=await context.newPage();await hiddenControl.goto('about:blank');
-    const visibilitySession=await context.newCDPSession(settings);
-    await visibilitySession.send('Emulation.setFocusEmulationEnabled',{enabled:false});
+    phase('native-claude-setup-admission');
+    let hiddenControl;
+    if (headed) {
+      hiddenControl=await context.newPage();await hiddenControl.goto('about:blank');
+    }
     await settings.bringToFront();
     const claudeButton=settings.getByRole('button',{name:'Connect Claude Desktop',exact:true});
     await claudeButton.click();
     await eventually(async()=>{const s=await status();return s.operation?.busy===true && s.operation?.name==='agents.connectClaude'},'Native Claude setup operation must be admitted asynchronously');
     assert.equal(await claudeButton.isEnabled(),false);
-    await hiddenControl.bringToFront();
-    await eventually(()=>settings.evaluate(()=>document.visibilityState==='hidden'),'Settings document must actually become hidden');
-    await eventually(()=>claudeButton.isEnabled(),'Completed native callback must clear the hidden Settings action state',120000);
-    assert.equal(await settings.evaluate(()=>document.visibilityState),'hidden');
+    if (headed) {
+      phase('actual-hidden-document-completion');
+      report.interactiveChecks.hiddenCompletion.status='running';
+      await hiddenControl.bringToFront();
+      await eventually(()=>settings.evaluate(()=>document.visibilityState==='hidden'),'Settings document must actually become hidden');
+      await eventually(()=>claudeButton.isEnabled(),'Completed native callback must clear the hidden Settings action state',120000);
+      assert.equal(await settings.evaluate(()=>document.visibilityState),'hidden');
+      report.interactiveChecks.hiddenCompletion.status='passed';
+    } else {
+      await eventually(()=>claudeButton.isEnabled(),'Completed native callback must clear the visible Settings action state',120000);
+      report.limits.push('Headless mode did not exercise native hidden-document completion. An unlocked headed run is a separate release qualification gate.');
+    }
     const claudeState=await lstat(claudeFile);
     assert(claudeState.isFile()&&!claudeState.isSymbolicLink());assert.equal(claudeState.nlink,1);assert.equal(claudeState.mode&0o077,0);
     const originalClaude=await readFile(claudeFile);
@@ -218,15 +353,16 @@ async function run() {
     assert.equal(configured.clients.claude.connected,false);
     assert.equal(typeof configured.helperStatus?.ageSeconds,'number');assert.equal(typeof configured.helperStatus?.stale,'boolean');assert.equal(typeof configured.helperStatus?.refreshing,'boolean');
     let refreshed;
+    phase('native-status-ttl-refresh');
     try{
       await writeFile(claudeFile,'{malformed owned QA configuration\n',{mode:0o600});
       refreshed=await eventually(async()=>{const s=await status();return s.clients?.claude?.configured===false&&s.clients?.claude?.status==='needs-attention'?s:false},'Read-only status polling must observe malformed owned Claude data through automatic helper TTL refresh',120000);
       assert.equal(refreshed.helperStatus.stale,false);
     }finally{await writeFile(claudeFile,originalClaude,{mode:0o600});}
     assert.deepEqual(await readFile(claudeFile),originalClaude);
-    await visibilitySession.detach();await hiddenControl.close();
-    report.claudeConfigurationQA={disposableHomeProven:true,fileInitiallyAbsent:true,nativeAsyncOperationObserved:true,completedWhileSettingsHidden:true,transportBoundToNativeProfile:true,desktopClientLaunched:false,automaticTtlObservedMalformedConfig:true,fixtureRestored:true,helperStatus:refreshed.helperStatus};
-    report.checks.push('Actual Claude setup stays in proven disposable home; hidden Settings receives async completion and automatic helper TTL notices malformed owned client data without manual refresh');
+    await hiddenControl?.close();
+    report.claudeConfigurationQA={disposableHomeProven:true,fileInitiallyAbsent:true,nativeAsyncOperationObserved:true,completedWhileSettingsHidden:report.interactiveChecks.hiddenCompletion.status==='passed',transportBoundToNativeProfile:true,desktopClientLaunched:false,automaticTtlObservedMalformedConfig:true,fixtureRestored:true,helperStatus:refreshed.helperStatus};
+    report.checks.push('Actual Claude setup stays in proven disposable home; native completion and automatic helper TTL notice malformed owned client data without manual refresh');
     await settings.evaluate(async () => {
       const {sendWithPromise} = await import('chrome://resources/js/cr.js');
       const button = document.createElement('button'); button.id = 'kumo-qa-native-action'; button.textContent = 'Owned native QA action'; document.body.prepend(button);
@@ -239,6 +375,7 @@ async function run() {
       const reply = await eventually(() => settings.evaluate(() => globalThis.__kumoQAReply), `Native action ${verb}`);
       assert.equal(await settings.evaluate(() => globalThis.__kumoQATrusted), true); return reply;
     };
+    phase('native-preferences-and-new-tab');
     await settings.locator('settings-kumo-page #greeting').fill('Owned native runtime QA');
     await settings.locator('settings-kumo-page #theme').selectOption('forest');
     await settings.getByRole('button',{name:'Save appearance',exact:true}).click();
@@ -252,15 +389,29 @@ async function run() {
     await ntp.locator('#greeting').waitFor(); assert.equal(await ntp.locator('#greeting').textContent(), 'Owned native runtime QA');
     assert.equal(new URL(ntp.url()).protocol, 'chrome:'); assert.equal(await ntp.locator('a[href="chrome://settings/kumo"]').count(), 3);
     report.checks.push('Native new tab uses saved native preferences and chrome://settings/kumo links');
+    phase('ordinary-extension-apis');
     const worker = await eventually(async () => context.serviceWorkers().find(w => w.url().startsWith('chrome-extension://')), 'Ordinary third-party MV3 extension service worker');
     const extensionId = new URL(worker.url()).host; assert.notEqual(extensionId, legacyId);
+    fixtureExtensionId = extensionId;
     const extensionPage = await context.newPage(); await extensionPage.goto(`chrome-extension://${extensionId}/qa.html`);
     const extensionResult = await extensionPage.evaluate(async () => ({id:chrome.runtime.id, echo:await chrome.runtime.sendMessage({qa:'ping'}), installed:await chrome.management.getAll(), storage:await chrome.storage.local.get('qaInstalled')}));
     assert.equal(extensionResult.echo.qa, 'pong'); assert(!extensionResult.installed.some(value => value.id === legacyId));
     assert.equal(extensionResult.storage.qaInstalled, true);
-    const targets = await (await context.newCDPSession(extensionPage)).send('Target.getTargets');
+    const extensionSession = await context.newCDPSession(extensionPage);
+    let targets;
+    try { targets = await bounded(() => extensionSession.send('Target.getTargets'), 'ordinary extension targets'); }
+    finally { await bounded(() => extensionSession.detach(), 'ordinary extension CDP detach'); }
     assert(!targets.targetInfos.some(target => target.url.includes(`chrome-extension://${legacyId}/`)));
     report.checks.push('Ordinary extension runtime messaging and management APIs work; retired product ID is absent from installed extensions and all targets');
+    // These fixtures deliberately contain login/payment controls. The separate
+    // native phishing suite qualifies their actual warning flow; isolate agent
+    // DOM/authority assertions using only the real user-facing native toggle.
+    phase('isolate-agent-fixtures-through-native-phishing-toggle');
+    const phishingToggle=settings.getByRole('checkbox',{name:'Local PhishLang phishing warnings',exact:true});
+    await settings.bringToFront();await phishingToggle.setChecked(false);
+    await eventually(async()=>{const p=(await status()).protection.phishing;return p.enabled===false&&p.available===false&&p.health==='off'},'Actual native toggle must isolate agent fixtures');
+    report.agentFixturePhishingIsolation={actualNativeToggle:true,initiallyDefaultOn:true,disabledForAgentFixtures:true,restoredOn:false};
+    phase('native-agent-authority-and-private-dom');
     const target = await context.newPage(); await target.goto(originA);
     await eventually(async () => (await status()).tabs.some(t => t.origin === originA), 'Owned fixture in native tab list');
     await settings.getByRole('button', {name:'Refresh connections and tabs', exact:true}).click();
@@ -280,6 +431,7 @@ async function run() {
     connection = await connectBroker({socketPath, token});
     const tabs = await eventually(async () => { const rows = await requestBrowser(connection, 'tabs.list', {}); return rows.length === 1 ? rows : false; }, 'Native authoritative grant reaches agent-only socket');
     const tabId = tabs[0].tabId; assert.equal(tabs[0].url, originA+'/');
+    phase('native-agent-snapshot-and-private-dom');
     const sampled = await requestBrowser(connection, 'tab.snapshot', {tabId});
     assert.match(sampled.text, /Public owned heading/); assert.doesNotMatch(JSON.stringify(sampled), /SECRET_QA/);
     for (const id of ['password','otp','card','hidden']) assert(!sampled.controls.some(control => control.id === id));
@@ -296,27 +448,43 @@ async function run() {
     // any old document result can return, while the origin grant stays valid.
     // This exercises native document/epoch rejection rather than relying on
     // broker revocation alone to discard a stale result.
+    phase('native-agent-controlled-document-epoch-race');
     const debuggerSession = await context.newCDPSession(target);
-    await debuggerSession.send('Debugger.enable');
-    const {breakpointId} = await debuggerSession.send('Debugger.setInstrumentationBreakpoint', {instrumentation:'beforeScriptExecution'});
-    let pendingSnapshot;
+    let breakpointId, pendingSnapshot, removed = false, resumed = false, debuggerFailure;
     try {
+      await bounded(() => debuggerSession.send('Debugger.enable'), 'agent Debugger.enable');
+      ({breakpointId} = await bounded(() => debuggerSession.send('Debugger.setInstrumentationBreakpoint', {instrumentation:'beforeScriptExecution'}), 'agent instrumentation breakpoint'));
       const paused = new Promise((resolve,reject) => {
         const timer=setTimeout(()=>reject(new Error('Native DOM script did not reach the controlled renderer pause')),15000);
         debuggerSession.once('Debugger.paused', event=>{clearTimeout(timer);resolve(event)});
       });
       pendingSnapshot = requestBrowser(connection, 'tab.snapshot', {tabId}).then(value=>({value}),error=>({error:error.message}));
       await paused;
+      phase('native-agent-paused-navigation');
       assert.equal((await requestBrowser(connection, 'tab.navigate', {tabId,url:originA+'/same-origin-navigation-race'})).navigating,true);
-      await debuggerSession.send('Debugger.removeInstrumentationBreakpoint', {breakpointId});
-      await debuggerSession.send('Debugger.resume').catch(()=>{});
+      phase('native-agent-remove-breakpoint-and-resume');
+      await bounded(() => debuggerSession.send('Debugger.removeBreakpoint', {breakpointId}), 'agent remove instrumentation breakpoint'); removed = true;
+      try { await bounded(() => debuggerSession.send('Debugger.resume'), 'agent resume controlled pause'); }
+      catch (error) {
+        // The real pause, native navigation acknowledgement and successful
+        // removal above are mandatory. Navigation may release the old context.
+        if (!navigationReleasedPause(error)) throw error;
+        report.debuggerResume = 'Native navigation released the previously observed controlled pause';
+      }
+      resumed = true;
       const stale = await pendingSnapshot;
       assert(stale.error, 'A DOM result started before native navigation must be discarded');
+      assert.doesNotMatch(stale.error, /timed?\s*out|timeout/i, 'The race requires an actual native stale rejection, not a bridge timeout');
       assert.match(stale.error,/document|chang|revok|grant|result|origin/);
       await target.waitForURL(originA+'/same-origin-navigation-race');
+    } catch (error) {
+      debuggerFailure = error; throw error;
     } finally {
-      await debuggerSession.send('Debugger.removeInstrumentationBreakpoint',{breakpointId}).catch(()=>{});
-      await debuggerSession.send('Debugger.resume').catch(()=>{}); await debuggerSession.detach();
+      const failures = await cleanupDebugger(debuggerSession, breakpointId, {remove: !!breakpointId && !removed, resume: !resumed});
+      if (failures.length) {
+        report.debuggerCleanupFailures = failures;
+        if (!debuggerFailure) throw new Error(`Owned debugger cleanup failed: ${failures.map(item => item.operation).join(', ')}`);
+      }
     }
     report.checks.push('Controlled in-flight native DOM result is discarded after native navigation changes the document epoch');
     await target.goto(originA+'/redirect-other');
@@ -326,6 +494,7 @@ async function run() {
     assert.equal((await action('agents.revoke')).ok, true);
     await assert.rejects(requestBrowser(connection, 'tabs.list', {}), /disabled|revok/);
     report.checks.push('Actual native grant/revoke UI, private browser pipes, agent-only socket, two-origin redirect/stale-grant rejection and password/OTP/payment exclusions');
+    phase('native-domain-network-admission');
     const probes = await context.newPage(); await probes.goto(originA);
     const blocked = `http://${blockedHost}:${serverA.address().port}`;
     const networkResults = await probes.evaluate(async blocked => {
@@ -336,30 +505,55 @@ async function run() {
       const websocket = await new Promise(resolve => { const ws=new WebSocket(blocked.replace('http:','ws:')+'/socket');const timer=setTimeout(()=>{ws.close();resolve('timeout')},10000);ws.onopen=()=>{clearTimeout(timer);ws.close();resolve('opened')};ws.onerror=()=>{clearTimeout(timer);resolve('error')}; });
       return {subresource,redirect,worker,websocket};
     }, blocked);
-    assert.equal(networkResults.subresource,true); assert.equal(networkResults.redirect,true); assert.equal(networkResults.worker,'blocked'); assert.equal(networkResults.websocket,'error');
+    report.domainResults = networkResults; report.listedServerHits = [...blockedHits];
+    await writeFile(path.join(output,'domain-network-results.json'),JSON.stringify({networkResults,listedServerHits:blockedHits,protection:(await status()).protection},null,2)+'\n',{mode:0o600});
+    assert.equal(networkResults.subresource,true,'A listed-host subresource fetch must reject'); assert.equal(networkResults.redirect,true,'A listed redirect destination must reject'); assert.equal(networkResults.worker,'blocked'); assert.equal(networkResults.websocket,'error');
     await assert.rejects(probes.goto(blocked+'/main'), /ERR_BLOCKED_BY_CLIENT/);
     await pause(200); assert.deepEqual(blockedHits, [], 'No listed destination may reach the local HTTP or WebSocket server');
     report.domainResults = networkResults; report.checks.push('Native domain blocking stops main navigation, subresources, redirect destinations, worker fetch and WebSocket before server contact');
     assert.equal((await action('agents.revoke')).ok, true);
+    phase('restore-native-phishing-enabled');
+    await settings.bringToFront();await phishingToggle.setChecked(true);
+    await eventually(async()=>{const p=(await status()).protection.phishing;return p.enabled===true&&p.available===true&&p.health==='ready'},'Native phishing must be restored ready',180000);
+    report.agentFixturePhishingIsolation.restoredOn=true;
     await settings.screenshot({path:path.join(output,'native-settings.png'),fullPage:true});
     report.browserErrors = errors; report.externalPageRequestsAborted = [...new Set(external)];
     assert.deepEqual(errors, []); report.passed = true;
   } catch (error) {
+    if (report.interactiveChecks.hiddenCompletion.status==='running') report.interactiveChecks.hiddenCompletion.status='failed';
     report.error = {message:String(error.message).replaceAll(/\b[A-Z_]+SECRET_QA\b/g,'[synthetic sensitive fixture]'), stack:error.stack};
     throw error;
   } finally {
-    connection?.close(); await context?.close();
-    if (runtimeSocketPath) {
+    phase('owned-cleanup');
+    connection?.close(); let closed=!preserve;
+    const observedChildren = browserProcess && !preserve ? await ownedBrowserChildren(browserProcess.pid, app).catch(()=>[]) : [];
+    if ((browser || context) && !preserve) {
+      try { await bounded(() => browser ? browser.close() : context.close(), 'Owned browser close; runtime preserved on timeout', 20000); }
+      catch(error) { closed=false;report.passed=false;report.cleanupError=error.message; }
+    }
+    if (browserProcess && !preserve) {
+      try {
+        if (browserProcess.exitCode===null && browserProcess.signalCode===null && await processIdentity(browserProcess.pid)===browserIdentity) browserProcess.kill('SIGTERM');
+        await eventually(async()=>!await processIdentity(browserProcess.pid),'Owned spawned browser must exit',15000);
+        await eventually(async()=>(await Promise.all(observedChildren.map(async child=>sameProcessIdentity(await processIdentity(child.pid),child.identity)))).every(present=>!present),'Observed owned browser children must exit',15000);
+        report.browserProcessStopped=true;
+        report.observedOwnedChildrenStopped=observedChildren.map(child=>child.pid);
+      } catch(error) { closed=false;report.passed=false;report.browserShutdownError=error.message; }
+    }
+    if (runtimeSocketPath && closed) {
       try {
         await eventually(async()=>{try{await lstat(runtimeSocketPath);return false}catch(error){if(error.code==='ENOENT')return true;throw error}},'Browser-owned agent socket must disappear after browser shutdown',10000);
         report.agentChildStoppedWithBrowser=true;
-      } catch(error) { report.passed=false;report.agentShutdownError=error.message; }
+      } catch(error) { closed=false;report.passed=false;report.agentShutdownError=error.message; }
     }
     for (const socket of sockets) socket.destroy();
     await Promise.all([closeServer(serverA),closeServer(serverB)]);
     if (before) { try { report.signatureAfter = await seal(app); assert.deepEqual(report.signatureAfter,before); } catch(error) {report.passed=false;report.signatureError=error.message;} }
-    report.finishedAt = new Date().toISOString(); report.disposableProfileRemoved = true;
-    await rm(short, {recursive:true,force:true}); await writeFile(path.join(output,'results.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});
+    report.finishedAt = new Date().toISOString(); report.disposableProfileRemoved = closed;
+    await writeFile(path.join(output,'browser-stderr.log'),browserErrors.join(''),{mode:0o600});
+    if (closed) await rm(short, {recursive:true,force:true});
+    else report.preservedRuntime={temporary:short,profile,home,reason:preserve?'Unexpected navigation; user session retained without closing it':'Owned shutdown incomplete; retained for diagnosis'};
+    await writeFile(path.join(output,'results.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});
     console.log(JSON.stringify({passed:report.passed,evidence:path.join(output,'results.json'),checks:report.checks.length}));
     if (!report.passed) process.exitCode=1;
   }

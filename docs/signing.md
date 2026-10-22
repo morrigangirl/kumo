@@ -40,7 +40,7 @@ with temporary-path placeholders. It never creates a release staging copy.
 
 The build Mac has a valid **Developer ID Application** identity for Carson Press LLC (`PV65ZWXCWX`) and a configured `notarytool` Keychain profile. Kumo 0.1.0, build 202610190001, completed production signing, Apple notarization, stapling and Gatekeeper verification and was published on October 20, 2026. See the [release validation](security-audits/2026-10-20/production-release.md). No approved Kumo browser-passkey profile is installed; that optional managed capability is separate from the ordinary browser release. The Apple Developer portal, certificates and profiles are never changed by these tools.
 
-The pending 0.1.2/build 202610210003 removes Kumo's built-in Apple Passwords integration. The unpublished build 202610210002 is superseded; its Apple acceptance cannot authorize a changed executable. The replacement needs a new completed source receipt, validation, signing and notarization before publication. Generic Chromium WebAuthn and the optional managed-entitlement signing workflow below remain; removed SDK probes and password sheets are not release capabilities. Widevine is not included.
+The published 0.1.2/build 202610210003 removed Kumo's built-in Apple Passwords integration. The pending native 0.2.0/build 202610210004 keeps that removal and needs its own completed source receipt, validation, signing and notarization before publication. Generic Chromium WebAuthn and the optional managed-entitlement signing workflow below remain; removed SDK probes and password sheets are not release capabilities. Widevine is not included.
 
 The first public binary excludes PhishLang. Kumo 0.1.1 includes the experimental
 model and helper while retaining domain blocking and ClamAV scanning. The signer
@@ -52,7 +52,7 @@ public distribution. See [GitHub Releases](github-releases.md) and
 ## Sign a separate completed source build
 
 First finish Chromium compilation and package the resulting app. Production
-signing requires its embedded `build-info.json` to contain
+signing requires its embedded `Contents/Resources/kumo-build-info.json` to contain
 `sourceCompiledLocally: true` and a verified `sourceBuildReceipt`, a valid strict
 input signature, Kumo's expected bundle identifier, and its Swift launcher.
 Both `engineVersion` and `sourceTargetVersion` must exactly match the current

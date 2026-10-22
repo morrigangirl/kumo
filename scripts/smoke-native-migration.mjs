@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {createServer} from 'node:net';
+import {createServer, request} from 'node:http';
+import {createConnection} from 'node:net';
 import {chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -18,8 +19,6 @@ const LEGACY_KEYS = ['preferences', 'phishingProtection', 'malwareProtection'];
 const team = 'PV65ZWXCWX';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-const sandboxPolicy = '(version 1)\n(allow default)\n(deny network-outbound (remote ip))\n(deny network-inbound (local ip))\n';
-const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
 
 async function eventually(operation, description, milliseconds = 45000) {
   const deadline = Date.now() + milliseconds; let last;
@@ -143,39 +142,80 @@ async function foundationProof(directory, home, environment) {
   return {passed: true, foundationHomeIsDisposable: true, applicationSupportIsDisposable: true};
 }
 
-async function networkProof(directory, environment) {
-  const policy = path.join(directory, 'no-ip-network.sb'), source = path.join(directory, 'network-probe.c'), binary = path.join(directory, 'network-probe');
-  await writeFile(policy, sandboxPolicy, {mode: 0o600});
-  await writeFile(source, `#include <sys/socket.h>\n#include <sys/un.h>\n#include <netinet/in.h>\n#include <arpa/inet.h>\n#include <errno.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\nint main(int n,char**v){if(n!=4)return 2;int s=socket(AF_INET,SOCK_STREAM,0);struct sockaddr_in a={.sin_len=sizeof(a),.sin_family=AF_INET,.sin_port=htons(atoi(v[1]))};inet_pton(AF_INET,"127.0.0.1",&a.sin_addr);int r=connect(s,(void*)&a,sizeof(a)),e=errno;close(s);s=socket(AF_INET6,SOCK_STREAM,0);struct sockaddr_in6 b={.sin6_len=sizeof(b),.sin6_family=AF_INET6,.sin6_port=htons(atoi(v[2]))};inet_pton(AF_INET6,"::1",&b.sin6_addr);int t=connect(s,(void*)&b,sizeof(b)),f=errno;close(s);s=socket(AF_UNIX,SOCK_STREAM,0);struct sockaddr_un u={.sun_len=sizeof(u),.sun_family=AF_UNIX};strlcpy(u.sun_path,v[3],sizeof(u.sun_path));int x=connect(s,(void*)&u,sizeof(u));close(s);printf("{\\"ipv4\\":%d,\\"ipv4Error\\":%d,\\"ipv6\\":%d,\\"ipv6Error\\":%d,\\"unix\\":%d}",r,e,t,f,x);return 0;}\n`, {mode: 0o600});
-  await execute('/usr/bin/clang', [source, '-o', binary]);
-  let ipHits = 0, unixHits = 0;
-  const four = createServer(socket => { ipHits++; socket.end(); }), six = createServer(socket => { ipHits++; socket.end(); });
-  const unix = createServer(socket => { unixHits++; socket.end(); }), unixPath = path.join(directory, 'proof.sock');
-  const listen = (server, ...arguments_) => new Promise((resolve, reject) => { server.once('error', reject); server.listen(...arguments_, resolve); });
-  try {
-    await listen(four, 0, '127.0.0.1'); await listen(six, 0, '::1'); await listen(unix, unixPath);
-    const args = [String(four.address().port), String(six.address().port), unixPath];
-    // Prove the fixture reaches the servers without the policy, so a refused
-    // sandbox connection cannot be mistaken for a dead loopback fixture.
-    const control = JSON.parse((await execute(binary, args, {env: environment, timeout: 10000})).stdout);
-    assert.equal(control.ipv4, 0); assert.equal(control.ipv6, 0); assert.equal(control.unix, 0);
-    await eventually(() => ipHits === 2 && unixHits === 1, 'Network positive control');
-    const blocked = JSON.parse((await execute('/usr/bin/sandbox-exec', ['-f', policy, binary, ...args], {env: environment, timeout: 10000})).stdout);
-    assert.equal(blocked.ipv4, -1); assert.equal(blocked.ipv6, -1);
-    assert([1, 13].includes(blocked.ipv4Error)); assert([1, 13].includes(blocked.ipv6Error));
-    assert.equal(blocked.unix, 0, 'Private Unix browser/helper IPC must remain available');
-    await eventually(() => unixHits === 2, 'Sandbox Unix IPC positive control');
-    assert.equal(ipHits, 2, 'No sandboxed IP connection may reach a server');
-    return {policy, passed: true, ipv4Denied: true, ipv6Denied: true, unixAllowed: true, externalRequestPerformed: false};
-  } finally {
-    for (const server of [four, six, unix]) if (server.listening) await new Promise(resolve => server.close(resolve));
-  }
+async function rejectingProxy() {
+  const observations = [], sockets = new Set();
+  const observe = (method, target) => {
+    // Bounded, disposable-fixture metadata only; never retain browser headers.
+    if (observations.length < 4096) observations.push({method, target: target.slice(0, 2048)});
+  };
+  const server = createServer((incoming, response) => {
+    observe(incoming.method, incoming.url);
+    response.writeHead(403, {'Content-Type': 'text/plain', 'Cache-Control': 'no-store', Connection: 'close'});
+    response.end('Owned migration QA proxy rejects every request.');
+  });
+  server.on('connect', (incoming, socket) => {
+    observe('CONNECT', incoming.url);
+    // Never establish a tunnel or open any outbound connection.
+    socket.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+  });
+  server.on('upgrade', (_incoming, socket) => socket.destroy());
+  server.on('clientError', (_error, socket) => socket.destroy());
+  server.on('connection', socket => {
+    sockets.add(socket); socket.setTimeout(10000, () => socket.destroy());
+    socket.on('error', () => {}); socket.once('close', () => sockets.delete(socket));
+  });
+  server.headersTimeout = 10000; server.requestTimeout = 10000; server.maxHeadersCount = 32;
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const port = server.address().port;
+  return {port, observations,
+    // Chromium156 net/docs/proxy.md: <-loopback> removes implicit localhost
+    // and link-local bypasses. One fixed HTTP proxy has no DIRECT fallback.
+    browserArgs: [`--proxy-server=http://127.0.0.1:${port}`, '--proxy-bypass-list=<-loopback>',
+      '--disable-quic', '--host-resolver-rules=MAP * ^NOTFOUND, EXCLUDE 127.0.0.1'],
+    async close() {
+      for (const socket of sockets) socket.destroy();
+      await new Promise(resolve => server.close(resolve));
+    }};
 }
 
-async function sandboxLauncher(directory, name, executable, policy) {
-  const launcher = path.join(directory, name);
-  await writeFile(launcher, `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${quote(policy)} ${quote(executable)} "$@"\n`, {mode: 0o700});
-  return launcher;
+async function proxySelfTest(proxy) {
+  const httpTarget = 'http://192.0.2.1/owned-proxy-self-test';
+  const response = await new Promise((resolve, reject) => {
+    const outgoing = request({host: '127.0.0.1', port: proxy.port, method: 'GET', path: httpTarget}, incoming => {
+      incoming.resume(); incoming.once('end', () => resolve(incoming.statusCode));
+    });
+    outgoing.once('error', reject); outgoing.setTimeout(10000, () => outgoing.destroy(new Error('Proxy HTTP self-test timed out'))); outgoing.end();
+  });
+  assert.equal(response, 403);
+  const connect = await new Promise((resolve, reject) => {
+    const socket = createConnection({host: '127.0.0.1', port: proxy.port}); let text = '';
+    socket.setTimeout(10000, () => socket.destroy(new Error('Proxy CONNECT self-test timed out')));
+    socket.once('connect', () => socket.write('CONNECT 192.0.2.2:443 HTTP/1.1\r\nHost: 192.0.2.2:443\r\n\r\n'));
+    socket.on('data', bytes => { text += bytes; assert(text.length < 1024); });
+    socket.once('error', reject); socket.once('end', () => { socket.destroy(); resolve(text); });
+  });
+  assert.match(connect, /^HTTP\/1\.1 403 Forbidden\r\n/);
+  assert(proxy.observations.some(item => item.method === 'GET' && item.target === httpTarget));
+  assert(proxy.observations.some(item => item.method === 'CONNECT' && item.target === '192.0.2.2:443'));
+  assert.deepEqual(proxy.browserArgs.slice(1), ['--proxy-bypass-list=<-loopback>', '--disable-quic', '--host-resolver-rules=MAP * ^NOTFOUND, EXCLUDE 127.0.0.1']);
+  return {passed: true, httpRejected: true, connectRejected: true, fixedLoopbackProxy: true, noDirectFallback: true,
+    proxyOpensNoOutboundConnections: true, scope: 'Browser HTTP/HTTPS requests; this is not an OS firewall or helper-network denial proof'};
+}
+
+async function browserProxyProof(context, proxy, label) {
+  const start = proxy.observations.length;
+  const page = await context.newPage(), marker = `${label}-${start}`;
+  const target = `http://192.0.2.1/owned-migration-proxy-${marker}`;
+  try {
+    const response = await page.goto(target, {waitUntil: 'domcontentloaded', timeout: 15000});
+    assert.equal(response.status(), 403);
+    await assert.rejects(page.goto('https://192.0.2.2/owned-migration-proxy', {waitUntil: 'domcontentloaded', timeout: 15000}), /ERR_TUNNEL_CONNECTION_FAILED/);
+    const observed = proxy.observations.slice(start);
+    assert(observed.some(item => item.method === 'GET' && item.target === target), 'Actual literal-IP HTTP navigation must reach the rejecting proxy');
+    assert(observed.some(item => item.method === 'CONNECT' && item.target === '192.0.2.2:443'), 'Actual literal-IP HTTPS navigation must reach the rejecting proxy');
+    return {label, passed: true, actualBrowserHTTP403: true, actualBrowserHTTPSRejected: true,
+      httpLiteralIPObservedAtProxy: true, httpsLiteralIPConnectObservedAtProxy: true, chromiumSandboxConfigured: true};
+  } finally { await page.close(); }
 }
 
 async function processRows() {
@@ -263,12 +303,13 @@ async function selfTest() {
   assert.throws(() => assertLegacySeed({preferences: {}}));
   assert.throws(() => assertOutputOutsideApps('/private/tmp/Kumo.app/evidence', ['/private/tmp/Kumo.app']));
   assertOutputOutsideApps('/private/tmp/evidence', ['/private/tmp/Kumo.app']);
-  assert.equal(quote("x'$(fixture)"), "'x'\\''$(fixture)'");
   const temporary = await mkdtemp('/private/tmp/km-self-');
+  let proxy;
   try {
     const environment = await nativeQAEnvironment(temporary);
     const homeProof = await foundationProof(temporary, environment.HOME, environment);
-    const network = await networkProof(temporary, environment);
+    proxy = await rejectingProxy();
+    const network = await proxySelfTest(proxy);
     const key = Buffer.from('synthetic public key '.repeat(10)).toString('base64');
     assert.match(extensionId(key), /^[a-p]{32}$/);
     const source = path.join(temporary, 'copy-source'); await mkdir(source); await writeFile(path.join(source, 'manifest.json'), '{}');
@@ -277,11 +318,11 @@ async function selfTest() {
     assert.deepEqual(manifest.permissions, ['storage']); assert.equal(manifest.key, key);
     assert.equal(manifest.content_scripts, undefined); assert.equal(manifest.host_permissions, undefined);
     const parsed = await processRows(); assert(parsed.some(row => row.pid === process.pid));
-    console.log(JSON.stringify({passed: true, checks: ['strict known-key fixtures', 'exclusive app/output boundary', 'shell argv quoting', 'real Foundation disposable-home lookup',
-      'OS sandbox IPv4/IPv6 denial with Unix IPC positive control', 'owned minimal legacy manifest preserves public key and has no network/nativeMessaging', 'macOS process identity parser'],
-    homeProof, networkProof: {passed: network.passed, ipv4Denied: network.ipv4Denied, ipv6Denied: network.ipv6Denied, unixAllowed: network.unixAllowed},
+    console.log(JSON.stringify({passed: true, checks: ['strict known-key fixtures', 'exclusive app/output boundary', 'real Foundation disposable-home lookup',
+      'loopback-only rejecting HTTP/CONNECT proxy with no outbound sockets or DIRECT fallback', 'owned minimal legacy manifest preserves public key and has no network/nativeMessaging', 'macOS process identity parser'],
+    homeProof, networkProof: network,
     browserLaunched: false, migrationExecuted: false, sealedAppsRead: false}));
-  } finally { await rm(temporary, {recursive: true, force: true}); }
+  } finally { if (proxy) await proxy.close(); await rm(temporary, {recursive: true, force: true}); }
 }
 
 async function run() {
@@ -299,30 +340,29 @@ async function run() {
   const report = {schemaVersion: 1, startedAt: new Date().toISOString(), passed: false,
     legacyVersion: '0.1.2', legacyBuild: legacy.info.appUpdates.build, nativeVersion: '0.2.0', chromiumVersion: current.info.engineVersion,
     fixture: 'Copied legacy resources; only owned copy uses minimal storage-only worker with original public key/ID',
-    legacyKeys: LEGACY_KEYS, cases: [], limitations: [
+    legacyKeys: LEGACY_KEYS, cases: [], browserProxyProofs: [], limitations: [
       'Tests real extension LevelDB import and retirement, not the historical background service or real user profile upgrades.',
       'Only valid preference/protection records are migrated. Corrupt/missing storage and managed-policy interactions need separate coverage.',
-      'All IP networking is denied by an inherited OS sandbox; no provider configuration, installer, AV setup/update or updater action is invoked.',
+      'Browser HTTP/HTTPS requests use a fixed rejecting loopback proxy, including literal IPs and implicit localhost bypasses; QUIC is disabled and DNS is sunk. This is not an OS firewall and does not prove helper-wide Internet denial.',
+      'Chromium retains its native sandbox. No provider configuration, installer, AV setup/update or updater action is invoked.',
       'The ordinary extension is a synthetic unpacked storage/management fixture; this does not test Chrome Web Store installation.']};
-  let context, contextProfile, shutdownSafe = true;
+  let context, contextProfile, proxy, shutdownSafe = true;
   try {
     const environment = await nativeQAEnvironment(temporary);
     report.homeProof = await foundationProof(temporary, environment.HOME, environment);
-    const network = await networkProof(temporary, environment);
-    report.networkProof = {passed: network.passed, ipv4Denied: network.ipv4Denied, ipv6Denied: network.ipv6Denied, unixAllowed: network.unixAllowed};
+    proxy = await rejectingProxy(); report.networkProof = await proxySelfTest(proxy);
     const copied = path.join(temporary, 'legacy-extension'), ordinary = path.join(temporary, 'ordinary-extension');
     await legacyFixture(legacy.resources, copied, legacy.manifest); await ordinaryFixture(ordinary);
-    const oldLauncher = await sandboxLauncher(temporary, 'old-engine', legacy.executable, network.policy);
-    const newLauncher = await sandboxLauncher(temporary, 'native-engine', current.executable, network.policy);
     const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
     const launch = async (profile, old) => {
       contextProfile = profile; shutdownSafe = false;
-      context = await chromium.launchPersistentContext(profile, {executablePath: old ? oldLauncher : newLauncher,
+      context = await chromium.launchPersistentContext(profile, {executablePath: old ? legacy.executable : current.executable,
         headless: true, chromiumSandbox: true, timeout: 90000, ignoreDefaultArgs: ['--disable-extensions'], env: environment,
         args: [`--load-extension=${old ? copied + ',' : ''}${ordinary}`, '--no-first-run', '--no-default-browser-check',
-          '--disable-sync', '--use-mock-keychain', '--password-store=basic', '--no-proxy-server', '--host-resolver-rules=MAP * ~NOTFOUND'],
+          '--disable-sync', '--use-mock-keychain', '--password-store=basic', ...proxy.browserArgs],
         viewport: {width: 1100, height: 900}});
       context.setDefaultTimeout(20000);
+      report.browserProxyProofs.push(await browserProxyProof(context, proxy, `${old ? 'legacy' : 'native'}-${path.basename(profile)}`));
       return context;
     };
     const stop = async () => { const proof = await closedFully(context, contextProfile); context = undefined; shutdownSafe = true; return proof; };
@@ -370,6 +410,7 @@ async function run() {
       try { report.finalShutdown = await closedFully(context, contextProfile); shutdownSafe = true; }
       catch (error) { report.passed = false; report.shutdownError = error.message; }
     }
+    if (proxy) await proxy.close();
     for (const [name, app] of [['nativeAppSeal', current], ['legacyAppSeal', legacy]]) {
       try { report[name] = await app.verifyUnchanged(); } catch (error) { report.passed = false; report[name] = {unchanged: false, error: error.message}; }
     }
