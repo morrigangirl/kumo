@@ -788,9 +788,35 @@ class PackagingSourceRefresh(unittest.TestCase):
             self.refresh(assets=assets)
         checkout.assert_not_called(); self.assertFalse(self.output.exists())
 
+    def test_exact_nested_installer_fix_paths_preserve_the_accepted_browser_assets(self):
+        for name in ['scripts/build-installer.py', 'scripts/test_installer_package.py',
+                     'native/installer/Sources/KumoSetup/Support.swift',
+                     'native/installer/Tests/KumoSetupTests/PayloadPathTests.swift']:
+            self.advance(name)
+        current = self.git('rev-parse', 'HEAD').decode().strip()
+        with self.verifiers():
+            result = self.refresh()
+        self.assertEqual(result['commit'], current)
+        self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+        for name in [release.archive_name(self.fixture.config()), 'appcast.xml', 'release-notes.md']:
+            self.assertEqual((self.output / name).read_bytes(), self.before[name])
+        self.assertEqual(json.loads((self.output / 'release.json').read_text())['commit'], current)
+
+    def test_adjacent_installer_or_runtime_changes_do_not_gain_folder_wide_authority(self):
+        for name in ['native/installer/Sources/KumoSetup/RootInstaller.swift',
+                     'native/installer/Sources/KumoSetup/main.swift',
+                     'native/installer/Tests/KumoSetupTests/UnreviewedTests.swift',
+                     'native/browser/fixture.cc', 'scripts/build-installer-unreviewed.py']:
+            self.git('reset', '--hard', self.previous)
+            self.advance(name)
+            with self.subTest(path=name), self.verifiers(), self.assertRaisesRegex(RuntimeError, 'exact reviewed'):
+                self.refresh()
+            self.assertFalse(self.output.exists())
+        self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+
     def test_nonancestor_unapproved_source_and_empty_commit_are_refused(self):
         self.advance("native/browser/fixture.cc")
-        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "four reviewed"):
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "exact reviewed"):
             self.refresh()
         self.git("checkout", "--orphan", "unrelated")
         self.git("add", "--all"); self.git("commit", "-qm", "Unrelated synthetic source")
@@ -798,14 +824,14 @@ class PackagingSourceRefresh(unittest.TestCase):
             self.refresh()
         self.git("checkout", "--detach", self.previous)
         self.git("commit", "--allow-empty", "-qm", "Empty source advance")
-        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "four reviewed"):
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "exact reviewed"):
             self.refresh()
         self.assertFalse(self.output.exists()); self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
 
     def test_rename_cannot_hide_an_unapproved_destination(self):
         self.git("mv", "scripts/build-installer-pkg.py", "scripts/unreviewed.py")
         self.git("commit", "-qm", "Unapproved rename")
-        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "four reviewed"):
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "exact reviewed"):
             self.refresh()
         self.assertFalse(self.output.exists())
 

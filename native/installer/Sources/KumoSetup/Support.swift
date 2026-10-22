@@ -158,24 +158,39 @@ final class Payloads {
         self.manifest = try JSONDecoder().decode(InstallerManifest.self, from: data)
         try manifest.validate()
     }
-    func verify(progress: (String) -> Void = { _ in }) throws {
-        progress("Verifying Kumo Setup…")
-        try verifyCode(bundle, identifier: "app.kumo.setup")
-        progress("Checking bundled files…")
+    private static func realPath(_ url: URL) throws -> String {
+        guard let resolved = Darwin.realpath(url.path, nil) else {
+            throw SetupError("The installer contains an external or broken symbolic link.")
+        }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+    func verifyFileInventory() throws {
         let payload = resources.appendingPathComponent("payload", isDirectory: true)
         _ = try directoryState(payload)
+        _ = try directoryState(app)
+        // Foundation enumerates /var through /private/var, but its URL symlink
+        // resolver can return /var again. Use POSIX realpath for both anchors
+        // and targets; preserve the lexical leaf until after lstat dispatch.
+        let resourcesPath = try Self.realPath(resources)
+        let payloadPath = try Self.realPath(payload)
+        let appPath = try Self.realPath(app)
+        guard payloadPath == resourcesPath + "/payload", appPath == payloadPath + "/Kumo.app" else {
+            throw SetupError("The installer contains an unsafe file path.")
+        }
         var actual: Set<String> = []
-        guard let enumerator = FileManager.default.enumerator(at: payload, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in false }) else { throw SetupError("The installer payload cannot be read.") }
+        guard let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: payloadPath, isDirectory: true), includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in false }) else { throw SetupError("The installer payload cannot be read.") }
         for case let item as URL in enumerator {
+            guard item.path.hasPrefix(resourcesPath + "/") else { throw SetupError("The installer contains an unsafe file path.") }
             var state = stat()
             guard lstat(item.path, &state) == 0 else { throw SetupError("An installer file disappeared.") }
-            let relative = String(item.path.dropFirst(resources.path.count + 1))
+            let relative = String(item.path.dropFirst(resourcesPath.count + 1))
             guard SetupPolicy.safePayloadPath(relative) else { throw SetupError("The installer contains an unsafe file path.") }
             switch state.st_mode & S_IFMT {
             case S_IFDIR: break
             case S_IFLNK:
-                let prefix = app.path + "/"
-                let target = item.resolvingSymlinksInPath().path
+                let prefix = appPath + "/"
+                let target = try Self.realPath(item)
                 guard item.path.hasPrefix(prefix), target.hasPrefix(prefix), FileManager.default.fileExists(atPath: target) else { throw SetupError("The installer contains an external or broken symbolic link.") }
             case S_IFREG:
                 guard state.st_nlink == 1, let expected = manifest.files[relative], try MalwareIO.hashFile(item).0 == expected else { throw SetupError("An installer file failed its integrity check: \(relative).") }
@@ -184,6 +199,12 @@ final class Payloads {
             }
         }
         guard actual == Set(manifest.files.keys) else { throw SetupError("The installer has missing or unexpected files.") }
+    }
+    func verify(progress: (String) -> Void = { _ in }) throws {
+        progress("Verifying Kumo Setup…")
+        try verifyCode(bundle, identifier: "app.kumo.setup")
+        progress("Checking bundled files…")
+        try verifyFileInventory()
         progress("Verifying the signed browser…")
         try verifyApp(app)
         progress("Verifying Cisco's antivirus package…")

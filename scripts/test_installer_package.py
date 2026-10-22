@@ -6,7 +6,9 @@ prompt, real scanner, launch agent, or user profile is invoked by this suite.
 """
 import hashlib
 import importlib.util
+import io
 import json
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import plistlib
 import sys
@@ -422,6 +424,122 @@ class SealedPayloadManifest(PayloadFixture):
                 self.manifest()
             self.assertFalse((self.resources / 'installer-manifest.json').exists())
             link.unlink()
+
+
+class SetupSigningModes(PayloadFixture):
+    """Exercise the actual signing orchestration with synthetic tool responses."""
+    def setUp(self):
+        super().setUp()
+        self.app = self.directory / 'Kumo Setup.app'
+        (self.app / 'Contents/MacOS').mkdir(parents=True)
+        self.executable = self.app / 'Contents/MacOS/KumoSetup'
+        self.executable.write_bytes(b'Synthetic Setup, never executed')
+        (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps({
+            'CFBundleShortVersionString': '0.2.0', 'CFBundleVersion': '202610210004'}))
+        self.nested = self.app / 'Contents/Resources/payload/Kumo.app/sealed-browser'
+        self.nested.parent.mkdir(parents=True)
+        self.nested.write_bytes(b'Unchanged previously notarized browser fixture')
+        self.identity = 'Developer ID Application: Synthetic QA (PV65ZWXCWX)'
+
+    def tool_result(self, *arguments, **kwargs):
+        if 'notarytool' in arguments:
+            return json.dumps({'status': 'Accepted', 'id': 'synthetic-notary-id'})
+        if str(arguments[0]) == '/usr/bin/ditto':
+            Path(arguments[-1]).write_bytes(b'Synthetic archive, never published')
+        return ''
+
+    def test_nested_signing_verifies_code_and_payload_without_notary_or_archive(self):
+        before = self.nested.read_bytes()
+        with patch.object(INSTALLER, 'run', side_effect=self.tool_result) as run, redirect_stdout(io.StringIO()):
+            INSTALLER.sign_for_package(self.app, self.identity)
+        calls = [call.args for call in run.call_args_list]
+        signing = [call for call in calls if '--sign' in call]
+        self.assertEqual([call[-1] for call in signing], [self.executable, self.app])
+        for call in signing:
+            self.assertIn(self.identity, call)
+            self.assertIn('--timestamp', call)
+            self.assertIn('runtime', call)
+        self.assertEqual(calls[-2], ('/usr/bin/codesign', '--verify', '--deep', '--strict', '--all-architectures', self.app))
+        self.assertEqual(calls[-1], (self.executable, '--verify-payloads'))
+        self.assertFalse(any('notarytool' in call or 'stapler' in call or '/usr/bin/ditto' in call
+                             or '/usr/sbin/spctl' in call for call in calls))
+        receipt = json.loads((self.directory / 'installer-receipt.json').read_text())
+        for field in ['signed', 'outerPackageNotarizationRequired', 'nestedPackageOnly']:
+            self.assertIs(receipt[field], True)
+        for field in ['notarized', 'readyForPublicDistribution', 'installedOnBuildHost']:
+            self.assertIs(receipt[field], False)
+        self.assertNotIn('archive', receipt)
+        self.assertEqual(self.nested.read_bytes(), before)
+        self.assertEqual({entry.name for entry in self.directory.iterdir()}, {'Kumo Setup.app', 'installer-receipt.json'})
+
+    def test_nested_sign_or_deep_verification_or_actual_payload_failure_never_writes_receipt(self):
+        for marker in ['--sign', '--deep', '--verify-payloads']:
+            def reject(*arguments, **kwargs):
+                if marker in arguments:
+                    raise RuntimeError('Synthetic required trust check failure')
+                return self.tool_result(*arguments, **kwargs)
+            with self.subTest(marker=marker), patch.object(INSTALLER, 'run', side_effect=reject), redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, 'required trust check'):
+                    INSTALLER.sign_for_package(self.app, self.identity)
+            self.assertFalse((self.directory / 'installer-receipt.json').exists())
+            self.assertFalse(any(self.directory.glob('*.zip')))
+
+    def test_standalone_signing_still_requires_accepted_notary_staple_and_gatekeeper(self):
+        keychain = self.directory / 'synthetic.keychain-db'
+        with patch.object(INSTALLER, 'run', side_effect=self.tool_result) as run, redirect_stdout(io.StringIO()):
+            INSTALLER.sign_and_notarize(self.app, self.identity, 'Synthetic Notary', keychain)
+        calls = [call.args for call in run.call_args_list]
+        submission = next(call for call in calls if 'notarytool' in call)
+        self.assertIn('Synthetic Notary', submission)
+        self.assertIn(str(keychain.resolve()), submission)
+        self.assertIn('--wait', submission)
+        for expected in [('stapler', 'staple'), ('stapler', 'validate'), ('/usr/sbin/spctl', '--assess')]:
+            self.assertTrue(any(all(part in call for part in expected) for call in calls), expected)
+        receipt = json.loads((self.directory / 'installer-receipt.json').read_text())
+        self.assertIs(receipt['notarized'], True)
+        self.assertEqual(receipt['notarizationSubmissionId'], 'synthetic-notary-id')
+        archive = Path(receipt['archive'])
+        self.assertEqual(archive.name, 'Kumo-Setup-0.2.0-202610210004-Apple-Silicon.zip')
+        self.assertEqual(receipt['sha256'], INSTALLER.digest(archive))
+        self.assertNotIn('nestedPackageOnly', receipt)
+
+    def test_standalone_notary_rejection_remains_fatal(self):
+        def rejected(*arguments, **kwargs):
+            return json.dumps({'status': 'Invalid', 'id': 'rejected'}) if 'notarytool' in arguments else self.tool_result(*arguments, **kwargs)
+        with patch.object(INSTALLER, 'run', side_effect=rejected) as run, redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, 'not accepted'):
+                INSTALLER.sign_and_notarize(self.app, self.identity, 'Synthetic Notary', None)
+        self.assertFalse(any('stapler' in call.args for call in run.call_args_list))
+        self.assertFalse((self.directory / 'installer-receipt.json').exists())
+
+    def cli(self, *options):
+        return [str(ROOT / 'scripts/build-installer.py'), '--app', 'browser.app',
+                '--definitions', 'definitions', '--executable', 'KumoSetup', '--output', 'Setup.app', *options]
+
+    def test_cli_signing_modes_are_explicit_and_dispatch_separately(self):
+        for options, mode in [([], 'unsigned'), (['--sign-for-package', '--identity', self.identity], 'nested'),
+                              (['--sign', '--identity', self.identity, '--notary-profile', 'Synthetic Notary'], 'standalone')]:
+            with (self.subTest(mode=mode), patch.object(INSTALLER.sys, 'argv', self.cli(*options)),
+                  patch.object(INSTALLER.sys, 'platform', 'darwin'), patch.object(INSTALLER, 'assemble', return_value=self.app) as assemble,
+                  patch.object(INSTALLER, 'sign_for_package') as nested, patch.object(INSTALLER, 'sign_and_notarize') as standalone):
+                INSTALLER.main()
+                assemble.assert_called_once()
+                if mode == 'nested': nested.assert_called_once_with(self.app, self.identity)
+                else: nested.assert_not_called()
+                if mode == 'standalone': standalone.assert_called_once_with(self.app, self.identity, 'Synthetic Notary', None)
+                else: standalone.assert_not_called()
+
+    def test_cli_rejects_conflicting_or_incomplete_signing_before_assembly(self):
+        for options in [['--sign', '--sign-for-package'], ['--sign-for-package'],
+                        ['--sign-for-package', '--identity', self.identity, '--notary-profile', 'unused'],
+                        ['--sign-for-package', '--identity', self.identity, '--notary-keychain', 'unused'],
+                        ['--sign', '--identity', self.identity]]:
+            with (self.subTest(options=options), patch.object(INSTALLER.sys, 'argv', self.cli(*options)),
+                  patch.object(INSTALLER.sys, 'platform', 'darwin'), patch.object(INSTALLER, 'assemble') as assemble,
+                  redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped):
+                INSTALLER.main()
+            self.assertEqual(stopped.exception.code, 2)
+            assemble.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -299,7 +299,7 @@ def setup_archive_name(app):
     return f'Kumo-Setup-{version}-{build}-Apple-Silicon.zip'
 
 
-def sign_and_notarize(app, identity, notary_profile, notary_keychain):
+def sign_setup(app, identity):
     # Existing nested Kumo/Cisco signatures are deliberately retained.
     executable = app / 'Contents/MacOS/KumoSetup'
     for target in [executable, app]:
@@ -307,6 +307,22 @@ def sign_and_notarize(app, identity, notary_profile, notary_keychain):
             '--identifier', SETUP_ID, target, timeout=180)
     run('/usr/bin/codesign', '--verify', '--deep', '--strict', '--all-architectures', app, timeout=240)
     run(executable, '--verify-payloads', timeout=600)
+
+
+def sign_for_package(app, identity):
+    """Sign a nested Setup payload; the enclosing distribution must be notarized."""
+    sign_setup(app, identity)
+    receipt = {'setup': str(app), 'signed': True, 'notarized': False,
+               'readyForPublicDistribution': False, 'outerPackageNotarizationRequired': True,
+               'nestedPackageOnly': True, 'includesPhishLang': True,
+               'includesClamAV': True, 'includesDefinitions': True,
+               'installedOnBuildHost': False}
+    (app.parent / 'installer-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+    print(json.dumps(receipt, indent=2))
+
+
+def sign_and_notarize(app, identity, notary_profile, notary_keychain):
+    sign_setup(app, identity)
     archive = app.with_suffix('.notary.zip')
     if archive.exists():
         raise RuntimeError('Notarization archive already exists.')
@@ -345,7 +361,10 @@ def main():
     parser.add_argument('--notices', type=Path, default=ROOT / 'build/installer-inputs/notices')
     parser.add_argument('--executable', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--sign', action='store_true')
+    signing = parser.add_mutually_exclusive_group()
+    signing.add_argument('--sign', action='store_true', help='Sign and notarize a standalone Setup archive.')
+    signing.add_argument('--sign-for-package', action='store_true',
+                         help='Sign only a nested Setup payload; the outer distribution package must be notarized.')
     parser.add_argument('--identity')
     parser.add_argument('--notary-profile')
     parser.add_argument('--notary-keychain', type=Path)
@@ -354,9 +373,15 @@ def main():
         parser.error('macOS is required to build this installer.')
     if args.sign and (not args.identity or not args.notary_profile):
         parser.error('Distribution requires an existing Developer ID Application identity and saved notary profile.')
+    if args.sign_for_package and not args.identity:
+        parser.error('A nested package payload requires an existing Developer ID Application identity.')
+    if args.sign_for_package and (args.notary_profile or args.notary_keychain):
+        parser.error('Use --sign for standalone notarization; --sign-for-package signs only the nested payload.')
     app = assemble(args)
     if args.sign:
         sign_and_notarize(app, args.identity, args.notary_profile, args.notary_keychain)
+    elif args.sign_for_package:
+        sign_for_package(app, args.identity)
 
 
 if __name__ == '__main__':

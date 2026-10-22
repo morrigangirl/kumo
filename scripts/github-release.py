@@ -472,9 +472,12 @@ def refresh_source(args, config):
     changed = set(run("git", "-C", ROOT, "diff", "--name-only", "--no-renames", "-z",
                       previous, commit, "--").decode("utf-8").rstrip("\0").split("\0"))
     allowed = {"scripts/build-installer-pkg.py", "scripts/test_installer_pkg.py",
-               "scripts/github-release.py", "scripts/test_github_release.py"}
+               "scripts/github-release.py", "scripts/test_github_release.py",
+               "scripts/build-installer.py", "scripts/test_installer_package.py",
+               "native/installer/Sources/KumoSetup/Support.swift",
+               "native/installer/Tests/KumoSetupTests/PayloadPathTests.swift"}
     if not changed or "" in changed or not changed <= allowed:
-        raise RuntimeError("Source refresh permits changes only to the four reviewed packaging/release tool files.")
+        raise RuntimeError("Source refresh permits changes only to the exact reviewed packaging/release files.")
     output = args.output.absolute()
     if output.exists() or output.is_symlink():
         raise RuntimeError("Output already exists; release directories are never overwritten.")
