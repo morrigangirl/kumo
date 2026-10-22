@@ -336,7 +336,7 @@ def transform(inputs, native):
         'void ShowSettings(BrowserWindowInterface* browser) {\n  // '+MARKER+'\n  ShowSettingsSubPage(browser, "kumo");'))
     edit("chrome/app/chrome_command_ids.h", lambda t: once(t,
         '#define IDC_ABOUT                       40018',
-        '#define IDC_ABOUT                       40018\n// '+MARKER+'\n#define IDC_KUMO_CHECK_FOR_UPDATES       65001\n#define IDC_KUMO_AGENTS                  65002'))
+        '#define IDC_ABOUT                       40018\n// '+MARKER+': bounded commands must never enter dynamic menu dispatch.\n#define IDC_KUMO_CHECK_FOR_UPDATES       56000\n#define IDC_KUMO_AGENTS                  56001\n#if IDC_KUMO_CHECK_FOR_UPDATES >= COMMAND_ID_FIRST_UNBOUNDED || \\\n    IDC_KUMO_AGENTS >= COMMAND_ID_FIRST_UNBOUNDED\n#error Kumo commands must remain below the dynamic menu command range\n#endif'))
     edit("chrome/browser/ui/browser_command_controller.cc", lambda t: once(include(t, api),
         '    case IDC_OPTIONS:\n      ShowSettings(webui::GetBrowserForOpeningWebUi(browser_));',
         '    case IDC_KUMO_CHECK_FOR_UPDATES:\n      kumo::CheckForUpdatesFromMenu(browser_->GetProfile());\n      break;\n    case IDC_KUMO_AGENTS:\n      ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_), "kumo");\n      break;\n    case IDC_OPTIONS:\n      ShowSettings(webui::GetBrowserForOpeningWebUi(browser_));'))

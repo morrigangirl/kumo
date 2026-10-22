@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -83,6 +84,44 @@ class PinnedNativeIntegrationTests(unittest.TestCase):
         overlay.apply_overlay(self.src)
         with self.assertRaisesRegex(RuntimeError, 'already applied or interrupted'):
             overlay.apply_overlay(self.src)
+
+    def test_product_menu_commands_are_bounded_and_do_not_alias_upstream_ids(self):
+        # AppMenu routes IDs >= 0xE000 to dynamic bookmarks/recent-tabs/
+        # tab-group delegates before consulting the browser command model.
+        # 65002 previously reached a null STGEverythingMenu on menu creation.
+        overlay.apply_overlay(self.src)
+        header = (self.src/'chrome/app/chrome_command_ids.h').read_text()
+        definitions = re.findall(r'^#define\s+(IDC_\w+)\s+(\d+)\s*$', header, re.M)
+        commands = {name: int(value) for name, value in definitions}
+        product = {name: value for name, value in commands.items() if name.startswith('IDC_KUMO_')}
+        self.assertEqual(set(product), {'IDC_KUMO_CHECK_FOR_UPDATES', 'IDC_KUMO_AGENTS'})
+        self.assertEqual(len(set(product.values())), len(product))
+        for name, value in product.items():
+            with self.subTest(command=name):
+                self.assertGreaterEqual(value, commands['IDC_MinimumLabelValue'])
+                self.assertLess(value, 0xE000, 'Static menu command entered Chromium dynamic dispatch')
+                self.assertEqual([other for other, number in commands.items() if number == value], [name])
+
+    @unittest.skipUnless(shutil.which('clang'), 'Clang is required for the command-range preprocessing regression')
+    def test_menu_guard_rejects_each_dynamic_id_at_preprocessing(self):
+        overlay.apply_overlay(self.src)
+        header = (self.src/'chrome/app/chrome_command_ids.h').read_text()
+        start = header.index('// '+overlay.MARKER+': bounded commands')
+        block = header[start:header.index('#endif', start)+len('#endif')]
+        constants = (PREPARED/'ui/base/command_id_constants.h').read_text()
+        # Compile the actual generated guard against the pinned upstream limit.
+        # Mutating either command back into the reserved range must fail.
+        for name in (None, 'IDC_KUMO_CHECK_FOR_UPDATES', 'IDC_KUMO_AGENTS'):
+            with self.subTest(command=name):
+                text = block if name is None else re.sub(
+                    rf'(#define\s+{name}\s+)\d+', r'\g<1>65002', block)
+                result = subprocess.run(['clang', '-E', '-x', 'c', '-'],
+                    input=constants+'\n'+text, text=True, capture_output=True, timeout=20)
+                if name is None:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('Kumo commands must remain below', result.stderr)
 
     def test_preimage_mismatch_is_rejected_before_any_output(self):
         path = self.src/next(iter(overlay.EXPECTED_SHA256))

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "morrigangirl/kumo",
-  "version": "0.2.0",
-  "build": "202610210004",
+  "version": "0.2.1",
+  "build": "202610220001",
   "feedURL": "https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml",
   "publicEDKey": "eiLxRqAuU1SsTSkD3qz07MwRxtUk03Xoob/20tyoGn8=",
   "signingKeyAccount": "app.kumo.browser.release"
