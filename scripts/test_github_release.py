@@ -703,6 +703,245 @@ class CompleteInstallerAssets(unittest.TestCase):
             runner.assert_not_called()
 
 
+class PackagingSourceRefresh(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.directory = Path(self.temporary.name).resolve()
+        self.repo = self.directory / "repo"; self.repo.mkdir()
+        home = self.directory / "git-home"; home.mkdir()
+        hooks = self.directory / "empty-hooks"; hooks.mkdir()
+        self.environment = {"PATH": "/usr/bin:/bin", "HOME": str(home),
+                            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+        self.git("init", "-q")
+        for key, value in [("user.name", "Synthetic Kumo QA"), ("user.email", "qa@example.invalid"),
+                           ("commit.gpgsign", "false"), ("core.hooksPath", str(hooks))]:
+            self.git("config", key, value)
+        for name in ["scripts/build-installer-pkg.py", "scripts/test_installer_pkg.py",
+                     "scripts/github-release.py", "scripts/test_github_release.py", "native/browser/fixture.cc"]:
+            file = self.repo / name; file.parent.mkdir(parents=True, exist_ok=True); file.write_text("Original synthetic source.\n")
+        self.git("add", "--all"); self.git("commit", "-qm", "Synthetic original release")
+        self.previous = self.git("rev-parse", "HEAD").decode().strip()
+        self.fixture = CompleteInstallerAssets(); self.fixture.commit = self.previous
+        self.assets = self.fixture.fixture(self.directory)
+        self.before = self.fixture.original_bytes(self.assets)
+        self.original_manifest_sha256 = release.digest(self.assets / "release.json")
+        self.output = self.directory / "refreshed"
+        self.commands = []
+
+    def git(self, *args):
+        return subprocess.run(["/usr/bin/git", "-C", str(self.repo), *args], env=self.environment,
+                              capture_output=True, check=True).stdout
+
+    def advance(self, name="scripts/build-installer-pkg.py"):
+        file = self.repo / name; file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(file.read_text() + "Reviewed packaging change.\n" if file.exists() else "Unapproved new path.\n")
+        self.git("add", "--all"); self.git("commit", "-qm", "Synthetic packaging correction")
+        return self.git("rev-parse", "HEAD").decode().strip()
+
+    @contextmanager
+    def verifiers(self):
+        def command(*args, **kwargs):
+            self.commands.append(tuple(str(value) for value in args))
+            if args[0] == "git":
+                result = subprocess.run([str(value) for value in args], env=self.environment, capture_output=True)
+                if result.returncode: raise RuntimeError("Synthetic Git ancestry or checkout check failed")
+                return result.stdout
+            return b""  # Only external authentication/extraction is mocked.
+        with self.fixture.platform_verifiers(), patch.object(release, "ROOT", self.repo), patch.object(release, "run", side_effect=command):
+            yield
+
+    def refresh(self, output=None, assets=None):
+        from argparse import Namespace
+        selected = assets or self.assets
+        return release.refresh_source(Namespace(artifacts=selected, output=output or self.output,
+            original_manifest_sha256=self.original_manifest_sha256 if assets is None else release.digest(selected / "release.json")), self.fixture.config())
+
+    def test_clean_packaging_descendant_preserves_accepted_five_and_only_changes_provenance(self):
+        for name in ["scripts/build-installer-pkg.py", "scripts/test_installer_pkg.py",
+                     "scripts/github-release.py", "scripts/test_github_release.py"]:
+            self.advance(name)
+        current = self.git("rev-parse", "HEAD").decode().strip()
+        with self.verifiers(), patch.object(release, "verify_assets", wraps=release.verify_assets) as verify:
+            result = self.refresh()
+            self.assertEqual(verify.call_count, 2)
+            release.verify_assets(self.output, self.fixture.config())
+        self.assertTrue(result["sourceRefreshed"]); self.assertTrue(result["signedAssetsUnchanged"])
+        self.assertEqual((result["previousCommit"], result["commit"]), (self.previous, current))
+        self.assertFalse(result["uploaded"])
+        self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+        self.assertEqual(len(list(self.output.iterdir())), 5)
+        expected = json.loads(self.before["release.json"]); expected["commit"] = current
+        self.assertEqual(json.loads((self.output / "release.json").read_text()), expected)
+        for name in [release.archive_name(self.fixture.config()), "appcast.xml", "release-notes.md"]:
+            self.assertEqual((self.output / name).read_bytes(), self.before[name])
+        self.assertTrue(any("--is-ancestor" in command for command in self.commands))
+        self.assertTrue(any("--no-renames" in command and "-z" in command for command in self.commands))
+        self.assertFalse(any(command[0] == "gh" or "sign-release.py" in " ".join(command) or "notarytool" in command for command in self.commands))
+        self.assertTrue(all("--verify" in command for command in self.commands if command[0] == "synthetic-sign-update"))
+
+    def test_installer_and_same_commit_are_refused_before_copying(self):
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "different packaging-only"):
+            self.refresh()
+        six = self.directory / "six"; six.mkdir(); assets = self.fixture.fixture(six, True)
+        with self.verifiers(), patch.object(release, "git_commit") as checkout, self.assertRaisesRegex(RuntimeError, "original five"):
+            self.refresh(assets=assets)
+        checkout.assert_not_called(); self.assertFalse(self.output.exists())
+
+    def test_nonancestor_unapproved_source_and_empty_commit_are_refused(self):
+        self.advance("native/browser/fixture.cc")
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "four reviewed"):
+            self.refresh()
+        self.git("checkout", "--orphan", "unrelated")
+        self.git("add", "--all"); self.git("commit", "-qm", "Unrelated synthetic source")
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "ancestry"):
+            self.refresh()
+        self.git("checkout", "--detach", self.previous)
+        self.git("commit", "--allow-empty", "-qm", "Empty source advance")
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "four reviewed"):
+            self.refresh()
+        self.assertFalse(self.output.exists()); self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+
+    def test_rename_cannot_hide_an_unapproved_destination(self):
+        self.git("mv", "scripts/build-installer-pkg.py", "scripts/unreviewed.py")
+        self.git("commit", "-qm", "Unapproved rename")
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "four reviewed"):
+            self.refresh()
+        self.assertFalse(self.output.exists())
+
+    def test_dirty_checkout_or_stale_archived_receipt_is_not_rebound(self):
+        self.advance(); (self.repo / "scripts/test_installer_pkg.py").write_text("Uncommitted edit")
+        with self.verifiers(), self.assertRaisesRegex(RuntimeError, "clean"):
+            self.refresh()
+        with self.verifiers(), patch.object(release, "app_metadata", side_effect=RuntimeError("source input fingerprint mismatch")), \
+                patch.object(release, "git_commit") as checkout, self.assertRaisesRegex(RuntimeError, "fingerprint mismatch"):
+            self.refresh()
+        checkout.assert_not_called(); self.assertFalse(self.output.exists())
+
+    def test_existing_signed_byte_tamper_is_rejected_by_the_normal_verifier(self):
+        self.advance()
+        for name in [release.archive_name(self.fixture.config()), "appcast.xml"]:
+            with self.subTest(name=name):
+                path = self.assets / name; path.write_bytes(self.before[name] + b"TAMPERED")
+                with self.verifiers(), patch.object(release, "git_commit") as checkout, self.assertRaises(RuntimeError):
+                    self.refresh()
+                checkout.assert_not_called(); path.write_bytes(self.before[name])
+        self.assertFalse(self.output.exists())
+
+    def test_forged_later_baseline_with_recomputed_checksums_cannot_hide_unapproved_source_change(self):
+        self.advance("docs/unapproved-provenance-change.txt")
+        forged_baseline = self.git("rev-parse", "HEAD").decode().strip()
+        self.advance("scripts/build-installer-pkg.py")
+        self.assertEqual(self.git("diff", "--name-only", forged_baseline, "HEAD").decode().splitlines(),
+                         ["scripts/build-installer-pkg.py"])
+        manifest = json.loads(self.before["release.json"]); manifest["commit"] = forged_baseline
+        (self.assets / "release.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        self.fixture.checksums(self.assets)
+        with self.verifiers():
+            # Signed ZIP/feed/notes and all ordinary manifest checks still pass:
+            # only the independent original-manifest pin establishes baseline.
+            self.assertEqual(release.verify_assets(self.assets, self.fixture.config())["commit"], forged_baseline)
+            with patch.object(release, "verify_assets", wraps=release.verify_assets) as verify, self.assertRaisesRegex(RuntimeError, "independently reviewed SHA256"):
+                self.refresh()
+            verify.assert_not_called()
+        for name in [release.archive_name(self.fixture.config()), "appcast.xml", "release-notes.md"]:
+            self.assertEqual((self.assets / name).read_bytes(), self.before[name])
+        self.assertFalse(self.output.exists())
+
+    def test_manifest_change_during_verification_or_substituted_return_value_is_rejected(self):
+        self.advance(); real_verify = release.verify_assets
+        def mutate_after_verification(directory, config):
+            result = real_verify(directory, config)
+            path = directory / "release.json"
+            path.write_bytes(path.read_bytes() + b"\n")
+            return result
+        with self.verifiers(), patch.object(release, "verify_assets", side_effect=mutate_after_verification), \
+                patch.object(release, "git_commit") as checkout, self.assertRaisesRegex(RuntimeError, "independently reviewed SHA256"):
+            self.refresh()
+        checkout.assert_not_called()
+        (self.assets / "release.json").write_bytes(self.before["release.json"])
+        substituted = {**json.loads(self.before["release.json"]), "commit": "f" * 40}
+        with self.verifiers(), patch.object(release, "verify_assets", return_value=substituted), \
+                patch.object(release, "git_commit") as checkout, self.assertRaisesRegex(RuntimeError, "differs from the reviewed"):
+            self.refresh()
+        checkout.assert_not_called(); self.assertFalse(self.output.exists())
+
+    def test_manifest_pin_requires_bounded_regular_single_link_bytes(self):
+        for invalid in [None, "", "a" * 63, "A" * 64, "a" * 65]:
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(RuntimeError, "64-hex"):
+                release.pinned_manifest_bytes(self.assets / "release.json", invalid)
+        for kind in ["symlink", "hardlink", "fifo", "empty", "oversized"]:
+            path = self.directory / (kind + ".json")
+            if kind == "symlink": path.symlink_to(self.assets / "release.json")
+            elif kind == "hardlink": os.link(self.assets / "release.json", path)
+            elif kind == "fifo": os.mkfifo(path, 0o600)
+            else: path.write_bytes(b"" if kind == "empty" else b"x" * 65537)
+            with self.subTest(kind=kind), self.assertRaises((OSError, RuntimeError)):
+                release.pinned_manifest_bytes(path, self.original_manifest_sha256)
+            path.unlink()
+
+    def test_staged_tamper_is_rejected_by_second_full_verification(self):
+        self.advance(); real_verify = release.verify_assets
+        for name in [release.archive_name(self.fixture.config()), "appcast.xml"]:
+            def tamper(directory, config):
+                if Path(directory) != self.assets:
+                    file = Path(directory) / name; file.write_bytes(file.read_bytes() + b"TAMPERED")
+                return real_verify(directory, config)
+            with self.subTest(name=name), self.verifiers(), patch.object(release, "verify_assets", side_effect=tamper) as verify, self.assertRaises(RuntimeError):
+                self.refresh()
+            self.assertEqual(verify.call_count, 2); self.assertFalse(self.output.exists())
+        self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+
+    def test_checkout_or_original_asset_change_during_refresh_prevents_publication(self):
+        self.advance(); real_verify = release.verify_assets
+        def advance_after_verification(directory, config):
+            result = real_verify(directory, config)
+            if Path(directory) != self.assets: self.advance("scripts/test_github_release.py")
+            return result
+        with self.verifiers(), patch.object(release, "verify_assets", side_effect=advance_after_verification), self.assertRaisesRegex(RuntimeError, "changed during source refresh"):
+            self.refresh()
+        real_copy = release.copy_regular_asset
+        def change_original(source, destination):
+            real_copy(source, destination)
+            if source.name == "release.json":
+                (self.assets / "release-notes.md").write_text("External concurrent change.\n")
+        with self.verifiers(), patch.object(release, "copy_regular_asset", side_effect=change_original), self.assertRaisesRegex(RuntimeError, "changed during source refresh"):
+            self.refresh()
+        self.assertFalse(self.output.exists())
+
+    def test_exclusive_and_external_outputs_preserve_originals(self):
+        self.advance()
+        for kind in ["existing", "symlink", "nested"]:
+            output = self.assets / "nested" if kind == "nested" else self.directory / kind
+            if kind == "existing": output.mkdir(); (output / "keep").write_text("Keep existing output")
+            elif kind == "symlink": output.symlink_to(self.directory / "absent")
+            with self.subTest(kind=kind), self.verifiers(), self.assertRaises(RuntimeError): self.refresh(output)
+        self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+        self.assertEqual((self.directory / "existing/keep").read_text(), "Keep existing output")
+        actual_publish = release.publish_directory
+        def race(staged, output):
+            output.mkdir(); (output / "keep").write_text("Won publish race")
+            actual_publish(staged, output)
+        with self.verifiers(), patch.object(release, "publish_directory", side_effect=race), self.assertRaisesRegex(RuntimeError, "exclusively"):
+            self.refresh()
+        self.assertEqual((self.output / "keep").read_text(), "Won publish race")
+        self.assertEqual(self.fixture.original_bytes(self.assets), self.before)
+        self.assertFalse(any(p.name.startswith(".kumo-source-refresh-") for p in self.directory.iterdir()))
+
+    def test_cli_dispatches_only_the_local_refresh(self):
+        output = io.StringIO()
+        with (patch.object(release.sys, "argv", [str(SCRIPT), "refresh-source", "--artifacts", "accepted", "--output", "refreshed",
+                                               "--original-manifest-sha256", self.original_manifest_sha256]),
+              patch.object(release.sys, "platform", "darwin"), patch.object(release, "load_config", return_value=self.fixture.config()),
+              patch.object(release, "refresh_source", return_value={"prepared": True, "uploaded": False}) as refresh,
+              patch.object(release, "run") as runner, redirect_stdout(output)):
+            self.assertEqual(release.main(), 0)
+            args = refresh.call_args.args[0]
+            self.assertEqual((args.artifacts, args.output), (Path("accepted"), Path("refreshed")))
+            self.assertEqual(args.original_manifest_sha256, self.original_manifest_sha256)
+            runner.assert_not_called()
+
+
 class WorkflowSyntax(unittest.TestCase):
     def test_release_shell_and_embedded_python_compile(self):
         workflow = (release.ROOT / ".github/workflows/release.yml").read_text()

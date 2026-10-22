@@ -427,6 +427,89 @@ def with_installer(args, config):
             "output": str(output), "uploaded": False}
 
 
+def pinned_manifest_bytes(path, expected_sha256):
+    """Read the independently reviewed, bounded original manifest without links."""
+    if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise RuntimeError("Source refresh requires the reviewed original manifest's 64-hex SHA256.")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(descriptor, "rb") as incoming:
+        before = os.fstat(incoming.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size <= 65536:
+            raise RuntimeError("The reviewed original manifest must be a bounded, singly linked regular file.")
+        value = incoming.read(65537)
+        after = os.fstat(incoming.fileno())
+        current = path.lstat()
+        fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if (len(value) != before.st_size or any(getattr(before, key) != getattr(after, key)
+                or getattr(before, key) != getattr(current, key) for key in fields)):
+            raise RuntimeError("The reviewed original manifest changed while it was being read.")
+    if hashlib.sha256(value).hexdigest() != expected_sha256:
+        raise RuntimeError("The original manifest differs from its independently reviewed SHA256.")
+    return value
+
+
+def refresh_source(args, config):
+    """Advance packaging provenance while preserving every signed update byte.
+
+    The accepted browser's embedded source receipt must still match the current
+    checkout. Only the reviewed packaging/release tools may differ in Git; this
+    command never signs, notarizes, uploads or changes the original assets.
+    """
+    directory = args.artifacts.resolve()
+    original_pin = getattr(args, "original_manifest_sha256", None)
+    pinned = pinned_manifest_bytes(directory / "release.json", original_pin)
+    manifest = verify_assets(directory, config)
+    if (pinned_manifest_bytes(directory / "release.json", original_pin) != pinned
+            or manifest != json.loads(pinned)):
+        raise RuntimeError("Verified release metadata differs from the reviewed original manifest.")
+    if "installer" in manifest:
+        raise RuntimeError("Source refresh requires the original five update assets, before installer attachment.")
+    commit = git_commit()
+    previous = manifest["commit"]
+    if previous == commit:
+        raise RuntimeError("Source refresh requires a different packaging-only descendant commit.")
+    run("git", "-C", ROOT, "merge-base", "--is-ancestor", previous, commit)
+    changed = set(run("git", "-C", ROOT, "diff", "--name-only", "--no-renames", "-z",
+                      previous, commit, "--").decode("utf-8").rstrip("\0").split("\0"))
+    allowed = {"scripts/build-installer-pkg.py", "scripts/test_installer_pkg.py",
+               "scripts/github-release.py", "scripts/test_github_release.py"}
+    if not changed or "" in changed or not changed <= allowed:
+        raise RuntimeError("Source refresh permits changes only to the four reviewed packaging/release tool files.")
+    output = args.output.absolute()
+    if output.exists() or output.is_symlink():
+        raise RuntimeError("Output already exists; release directories are never overwritten.")
+    if output.resolve().is_relative_to(directory):
+        raise RuntimeError("The refreshed release directory must be outside the original assets.")
+    original = {entry.name: digest(entry) for entry in directory.iterdir()}
+    if original.get("release.json") != original_pin:
+        raise RuntimeError("The reviewed original manifest changed before source refresh.")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".kumo-source-refresh-", dir=output.parent) as temporary:
+        staged = Path(temporary) / "assets"
+        staged.mkdir(mode=0o700)
+        for name in sorted(original):
+            copy_regular_asset(directory / name, staged / name)
+            if digest(staged / name) != original[name]:
+                raise RuntimeError("An accepted release asset changed during source refresh.")
+        refreshed = {**manifest, "commit": commit}
+        (staged / "release.json").write_text(json.dumps(refreshed, indent=2) + "\n")
+        names = sorted(name for name in original if name != "SHA256SUMS")
+        (staged / "SHA256SUMS").write_text("".join(f"{digest(staged / name)}  {name}\n" for name in names))
+        # This rechecks the real signed ZIP, feed, and current compiled receipt;
+        # no manifest declaration can substitute for the archived application.
+        if verify_assets(staged, config) != refreshed:
+            raise RuntimeError("Source refresh changed unexpected release metadata.")
+        immutable = {archive_name(config), "appcast.xml", "release-notes.md"}
+        if any(digest(staged / name) != original[name] for name in immutable):
+            raise RuntimeError("Source refresh changed accepted signed update or notes bytes.")
+        if git_commit() != commit or {entry.name: digest(entry) for entry in directory.iterdir()} != original:
+            raise RuntimeError("Reviewed source or original assets changed during source refresh.")
+        publish_directory(staged, output)
+    return {"prepared": True, "sourceRefreshed": True, "previousCommit": previous,
+            "commit": commit, "signedAssetsUnchanged": True, "tag": release_tag(config),
+            "output": str(output), "uploaded": False}
+
+
 def verify_assets(directory, config, signer=None):
     directory = directory.resolve()
     expected = {archive_name(config), "appcast.xml", "release.json", "release-notes.md", "SHA256SUMS"}
@@ -615,6 +698,11 @@ def main():
     installer_parser.add_argument("--artifacts", type=Path, required=True)
     installer_parser.add_argument("--installer", type=Path, required=True)
     installer_parser.add_argument("--output", type=Path, required=True)
+    refresh_parser = commands.add_parser("refresh-source", help="Bind unchanged verified update assets to a clean packaging-only descendant commit")
+    refresh_parser.add_argument("--artifacts", type=Path, required=True)
+    refresh_parser.add_argument("--output", type=Path, required=True)
+    refresh_parser.add_argument("--original-manifest-sha256", required=True,
+                                help="Independently reviewed SHA256 of the original release.json; never derive it from an untrusted input")
     upload_parser = commands.add_parser("upload", help="Upload verified assets to a GitHub draft; --publish also makes it public/latest")
     upload_parser.add_argument("--artifacts", type=Path, required=True)
     upload_parser.add_argument("--publish", action="store_true")
@@ -643,6 +731,8 @@ def main():
         result = prepare(args, config)
     elif args.command == "with-installer":
         result = with_installer(args, config)
+    elif args.command == "refresh-source":
+        result = refresh_source(args, config)
     elif args.command == "upload":
         result = upload(args, config)
     else:

@@ -20,6 +20,38 @@ SPEC.loader.exec_module(PKG)
 
 
 class PackagePolicy(unittest.TestCase):
+    def test_script_normalization_rejects_extra_or_linked_input_before_archive_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            d = Path(directory); scripts = d / 'scripts'; scripts.mkdir()
+            for name in ('preinstall', 'publish-kumo'):
+                (scripts / name).write_text('#!/bin/sh\nexit 78\n'); (scripts / name).chmod(0o755)
+            extra = scripts / 'unreviewed'; extra.write_text('never execute')
+            with patch.object(PKG, 'run') as command:
+                with self.assertRaisesRegex(RuntimeError, 'two fixed scripts'):
+                    PKG.normalize_kumo_component_scripts(d / 'input.pkg', scripts, d / 'new.pkg', d / 'work')
+                command.assert_not_called()
+                extra.unlink(); (scripts / 'preinstall').unlink()
+                (scripts / 'preinstall').symlink_to(scripts / 'publish-kumo')
+                with self.assertRaises(RuntimeError):
+                    PKG.normalize_kumo_component_scripts(d / 'input.pkg', scripts, d / 'new.pkg', d / 'work')
+                command.assert_not_called()
+            self.assertFalse((d / 'work').exists())
+
+    def test_script_normalization_rejects_nonexecutable_script_or_existing_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            d = Path(directory); scripts = d / 'scripts'; scripts.mkdir()
+            for name in ('preinstall', 'publish-kumo'):
+                (scripts / name).write_text('#!/bin/sh\nexit 78\n'); (scripts / name).chmod(0o644)
+            with patch.object(PKG, 'run') as command:
+                with self.assertRaisesRegex(RuntimeError, 'mode 0755'):
+                    PKG.normalize_kumo_component_scripts(d / 'input.pkg', scripts, d / 'new.pkg', d / 'work')
+                command.assert_not_called()
+                output = d / 'new.pkg'; output.write_bytes(b'preserve original')
+                with self.assertRaisesRegex(RuntimeError, 'new unsigned component'):
+                    PKG.normalize_kumo_component_scripts(d / 'input.pkg', scripts, output, d / 'work')
+                self.assertEqual(output.read_bytes(), b'preserve original')
+                command.assert_not_called()
+
     def test_archive_name_comes_from_signed_bundle_version_and_build(self):
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / 'Kumo Setup.app'; (app / 'Contents').mkdir(parents=True)
@@ -443,10 +475,27 @@ class AppleToolsStructureFixture(unittest.TestCase):
             (bundle / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'app.kumo.setup', 'CFBundleExecutable': 'KumoSetup', 'CFBundlePackageType': 'APPL', 'CFBundleVersion': '202610210004', 'CFBundleShortVersionString': '0.2.0'}))
             executable = bundle / 'Contents/MacOS/KumoSetup'; executable.write_text('#!/bin/sh\nexit 78\n'); executable.chmod(0o755)
             publish = scripts / 'publish-kumo'; publish.write_text('#!/bin/sh\nexit 78\n'); publish.chmod(0o755)
+            # Actual pkgbuild must reproduce the old AppleDouble failure even
+            # on a runner that does not assign protected provenance metadata.
+            for name in ('preinstall', 'publish-kumo'):
+                subprocess.run(['/usr/bin/xattr', '-w', 'com.kumo.noninstallable-fixture',
+                                'archive-metadata', str(scripts / name)],
+                               capture_output=True, check=True, timeout=30)
             policy_file = d / 'component-policy.plist'
             subprocess.run(['/usr/bin/pkgbuild', '--analyze', '--root', str(root), str(policy_file)], capture_output=True, check=True, timeout=60)
             policy_file.write_bytes(plistlib.dumps(PKG.configure_component_policy(plistlib.loads(policy_file.read_bytes()))))
-            subprocess.run(['/usr/bin/pkgbuild', '--root', str(root), '--identifier', PKG.PACKAGE_ID, '--version', '0.2.0', '--scripts', str(scripts), '--component-plist', str(policy_file), str(packages / 'Kumo-Payload.pkg')], capture_output=True, check=True, timeout=60)
+            raw_component = d / 'Kumo-Payload-raw.pkg'
+            subprocess.run(['/usr/bin/pkgbuild', '--root', str(root), '--identifier', PKG.PACKAGE_ID, '--version', '0.2.0', '--scripts', str(scripts), '--component-plist', str(policy_file), str(raw_component)], capture_output=True, check=True, timeout=60)
+            old_expanded = d / 'old-expanded'
+            subprocess.run(['/usr/sbin/pkgutil', '--expand', str(raw_component), str(old_expanded)], capture_output=True, check=True, timeout=60)
+            self.assertEqual({p.name for p in (old_expanded / 'Scripts').iterdir()},
+                             {'preinstall', 'publish-kumo', '._preinstall', '._publish-kumo'})
+            before = PKG.component_hashes(old_expanded)
+            normalized = PKG.normalize_kumo_component_scripts(
+                raw_component, scripts, packages / 'Kumo-Payload.pkg', d / 'normalization')
+            self.assertEqual(set(normalized['Scripts']['entries']), {'preinstall', 'publish-kumo'})
+            for name in ('Bom', 'Payload', 'PackageInfo'):
+                self.assertEqual(normalized[name], before[name])
             distribution = PKG.distribution_xml(components, {'appVersion': '0.2.0'}); (d / 'Distribution.xml').write_text(distribution)
             output = d / 'NONINSTALLABLE-structure-fixture.pkg'
             subprocess.run(['/usr/bin/productbuild', '--distribution', str(d / 'Distribution.xml'), '--resources', str(resources), '--package-path', str(packages), str(output)], capture_output=True, check=True, timeout=60)

@@ -195,6 +195,70 @@ def component_hashes(directory):
     return result
 
 
+def normalize_kumo_component_scripts(component, scripts, output, work):
+    """Rearchive only Kumo's two new unsigned scripts without AppleDouble.
+
+    pkgbuild records source-file metadata as additional script members, while
+    pkgutil --flatten rearchives a Scripts FILE as a nested member. Build the
+    standard four-member flat component with Apple's xar instead, preserving
+    the original BOM, compressed payload and PackageInfo bytes exactly.
+    """
+    component, scripts, output, work = map(Path, (component, scripts, output, work))
+    names = ('preinstall', 'publish-kumo')
+    if (scripts.is_symlink() or not scripts.is_dir()
+            or {p.name for p in scripts.iterdir()} != set(names)
+            or output.exists() or output.is_symlink()):
+        raise RuntimeError('Choose two fixed scripts and a new unsigned component output.')
+    expected_scripts = {}
+    for name in names:
+        file = regular(scripts / name)
+        if stat.S_IMODE(file.stat().st_mode) != 0o755:
+            raise RuntimeError('The fixed unsigned package scripts must have mode 0755.')
+        expected_scripts[name] = digest(file)
+    work.mkdir(mode=0o700)
+    expanded = work / 'original-expanded'
+    run('/usr/sbin/pkgutil', '--expand', regular(component), expanded, timeout=600)
+    before = component_hashes(expanded)
+    old_scripts = expanded / 'Scripts'
+    if (old_scripts.is_symlink() or not old_scripts.is_dir()
+            or not set(names) <= {p.name for p in old_scripts.iterdir()}
+            or {p.name for p in old_scripts.iterdir()} - set(names)
+               - {'._' + name for name in names}):
+        raise RuntimeError('The unsigned Kumo component has unexpected script members.')
+    for name in names:
+        file = regular(old_scripts / name)
+        if digest(file) != expected_scripts[name] or stat.S_IMODE(file.stat().st_mode) != 0o755:
+            raise RuntimeError('pkgbuild changed a fixed unsigned package script.')
+    old_scripts.rename(work / 'original-scripts')
+    archive = work / 'Scripts.cpio'
+    run('/usr/bin/tar', '--format', 'cpio', '--disable-copyfile', '--no-xattrs', '--no-acls',
+        '--uid', '0', '--gid', '0', '-cf', archive, '-C', scripts, *names, timeout=120)
+    with (expanded / 'Scripts').open('xb') as compressed:
+        subprocess.run(['/usr/bin/gzip', '-n', '-c', str(archive)], stdout=compressed,
+                       stderr=subprocess.PIPE, check=True, timeout=120)
+    members = ('Bom', 'Payload', 'PackageInfo', 'Scripts')
+    raw_hashes = {name: digest(regular(expanded / name)) for name in members}
+    subprocess.run(['/usr/bin/xar', '-cf', str(output.absolute()), '--compression', 'none', *members],
+                   cwd=expanded, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=600)
+    listed = run('/usr/bin/xar', '-tf', output).splitlines()
+    if len(listed) != 4 or set(listed) != set(members):
+        raise RuntimeError('The normalized unsigned component has unexpected XAR members.')
+    raw_checked = work / 'raw-checked'; raw_checked.mkdir(mode=0o700)
+    run('/usr/bin/xar', '-xf', output, '-C', raw_checked, timeout=600)
+    if ({p.name for p in raw_checked.iterdir()} != set(members)
+            or {name: digest(regular(raw_checked / name)) for name in members} != raw_hashes):
+        raise RuntimeError('The normalized unsigned component changed raw archive bytes.')
+    checked = work / 'checked'
+    run('/usr/sbin/pkgutil', '--expand', output, checked, timeout=600)
+    after = component_hashes(checked)
+    if any(after[name] != before[name] for name in members if name != 'Scripts'):
+        raise RuntimeError('Script normalization changed the BOM, payload or PackageInfo.')
+    wanted = {name: {'type': 'file', 'mode': 0o755, 'sha256': expected_scripts[name]} for name in names}
+    if after['Scripts'] != {'type': 'directory', 'entries': wanted}:
+        raise RuntimeError('The normalized component must contain exactly the two fixed scripts.')
+    return after
+
+
 def configure_component_policy(policy):
     if not isinstance(policy, list) or not policy:
         raise RuntimeError('Package analysis did not identify the signed Setup bundle.')
@@ -548,10 +612,10 @@ def build(args):
         run('/usr/bin/pkgbuild', '--root', payload_root, '--identifier', PACKAGE_ID,
             '--version', metadata['appVersion'], '--install-location', f"/Library/Application Support/Kumo/Setup/{metadata['appBuild']}",
             '--ownership', 'recommended', '--component-plist', components_plist, '--scripts', scripts,
-            work / 'components/Kumo-Payload.pkg', timeout=1200)
-        payload_check = work / 'payload-component-expanded'
-        run('/usr/sbin/pkgutil', '--expand', work / 'components/Kumo-Payload.pkg', payload_check, timeout=600)
-        payload_hashes = component_hashes(payload_check)
+            work / 'Kumo-Payload-raw.pkg', timeout=1200)
+        payload_hashes = normalize_kumo_component_scripts(
+            work / 'Kumo-Payload-raw.pkg', scripts, work / 'components/Kumo-Payload.pkg',
+            work / 'payload-script-normalization')
         resources = work / 'Resources'; resources.mkdir()
         write_new(resources / 'Welcome.html', '<!doctype html><html><body><h1>Install Kumo</h1><p>This installer includes the browser, local phishing warnings, antivirus engine and current virus definitions. Close Kumo before continuing. macOS will ask for administrator approval.</p><p>Your browser profiles and existing protection choices are preserved. Connect your desktop AI apps later in Kumo Settings.</p></body></html>')
         write_new(resources / 'Conclusion.html', '<!doctype html><html><body><h1>Kumo is ready</h1><p>Open Kumo from Applications. Download protection has passed a harmless test scan and virus definitions will update automatically for the account currently logged in.</p><p>Local phishing warnings start on for new profiles. Existing opt-outs are preserved. No account password or website content is sent to a cloud model.</p></body></html>')
