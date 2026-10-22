@@ -30,7 +30,7 @@ class OptionalModelAssembly(unittest.TestCase):
         self.engine = self.root / "engine/Chromium.app"
         self.destination = self.root / "output/Kumo.app"
         self.engine_file("Contents/MacOS/Chromium")
-        self.engine_file("Contents/Info.plist", plistlib.dumps({"CFBundleExecutable": "Chromium"}))
+        self.engine_file("Contents/Info.plist", plistlib.dumps({"CFBundleExecutable": "Chromium", "CFBundleShortVersionString": "155.0.8059.84"}))
         (self.engine / "Contents/Resources").mkdir()
         self.release = {
             "schemaVersion": 1, "repository": "morrigangirl/kumo", "version": "0.1.0", "build": "202610190001",
@@ -48,7 +48,7 @@ class OptionalModelAssembly(unittest.TestCase):
         for relative in (
             "build/updater-native/KumoUpdater", "build/sparkle/Sparkle.framework/Sparkle", "build/sparkle/LICENSE",
             "build/malware-native/KumoMalwareScanner", "build/malware-native/KumoMalwareSetup",
-            "config/clamav-lock.json", "extension/manifest.json",
+            "config/clamav-lock.json", "build/agent-runtime/bin/node", "build/agent-runtime/LICENSE.node", "build/agent-runtime/runtime.json",
             "build/phishing-native/KumoPhishingHost", "build/phishlang-model/PhishLang.mlmodelc/model.mil",
             "build/phishlang-model/vocab.txt", "build/phishlang-model/model-info.json",
             "native/phishing/NOTICE.md", "native/phishing/LICENSE-MobileBERT.txt",
@@ -68,7 +68,8 @@ class OptionalModelAssembly(unittest.TestCase):
             "signature_policy": Mock(return_value=0x10000), "resign_nested_code": Mock(),
             "verify_engine_start": Mock(), "verify_phishing_start": Mock(), "verify_malware_start": Mock(),
             "verify_packaged_phishing_resources": Mock(return_value="5" * 64),
-            "extension_id": Mock(return_value="a" * 32),
+            "verified_agent_runtime": Mock(return_value={"version": "22.23.4"}), "verify_agent_start": Mock(),
+            "verified_source_receipt": Mock(return_value=({"verify_artifact_hashes": Mock()}, {"receipt": "synthetic"})),
         }
         self.mocks = replacements
         for name, replacement in replacements.items():
@@ -77,9 +78,8 @@ class OptionalModelAssembly(unittest.TestCase):
             self.addCleanup(patcher.stop)
         # Functions with path-valued defaults retain the real source directory;
         # pass explicit synthetic sources while exercising their original code.
-        real_extension_copy, real_agent_copy = PACKAGE.copy_extension_resources, PACKAGE.copy_agent_runtime
+        real_agent_copy = PACKAGE.copy_agent_runtime
         for name, replacement in (
-            ("copy_extension_resources", lambda destination: real_extension_copy(destination, self.root / "extension")),
             ("copy_agent_runtime", lambda destination: real_agent_copy(destination, self.root / "agent-bridge")),
         ):
             patcher = patch.object(PACKAGE, name, replacement)
@@ -126,7 +126,7 @@ class OptionalModelAssembly(unittest.TestCase):
         raise AssertionError("Unexpected external command: " + str(arguments))
 
     def assemble(self, **options):
-        return PACKAGE.assemble(self.engine, self.destination, False, self.destination, **options)
+        return PACKAGE.assemble(self.engine, self.destination, True, self.destination, **options)
 
     def test_omitted_model_is_not_validated_built_copied_signed_or_probed(self):
         self.mocks["verified_phishing_resources"].side_effect = AssertionError("Model must not be read")
@@ -140,7 +140,7 @@ class OptionalModelAssembly(unittest.TestCase):
         self.assertEqual(info["phishingProtection"], {
             "included": False, "experimental": True, "enabledByDefault": False, "reason": "omitted-from-release",
         })
-        saved = json.loads((self.destination / "Contents/Resources/KumoExtension/build-info.json").read_text())
+        saved = json.loads((self.destination / "Contents/Resources/kumo-build-info.json").read_text())
         self.assertEqual(saved["phishingProtection"], info["phishingProtection"])
         PACKAGE.ensure_no_phishing_assets(self.destination)
 
@@ -148,17 +148,17 @@ class OptionalModelAssembly(unittest.TestCase):
         info = self.assemble(include_phishing=False)
         for relative in (
             "Contents/Helpers/KumoMalware.app/Contents/MacOS/KumoMalwareHost",
-            "Contents/MacOS/KumoMalwareSetup", "Contents/Resources/malware-host-template.json",
-            "Contents/Resources/KumoExtension/malware/rules.json",
-            "Contents/Resources/KumoExtension/malware/LICENSE.txt",
+            "Contents/MacOS/KumoMalwareSetup",
+            "Contents/Resources/KumoProtection/malware/rules.json",
+            "Contents/Resources/KumoProtection/malware/LICENSE.txt",
             "Contents/Helpers/KumoUpdater.app/Contents/MacOS/KumoUpdater",
-            "Contents/Resources/agent-bridge/run", "Contents/Resources/native-host-template.json",
+            "Contents/Resources/agent-bridge/run", "Contents/Resources/agent-bridge/bin/node",
         ):
             with self.subTest(resource=relative):
                 self.assertTrue((self.destination / relative).is_file())
         self.assertIs(info["malwareProtection"]["included"], True)
         self.assertIs(info["malwareProtection"]["enabledByDefault"], True)
-        self.assertEqual(info["malwareProtection"]["downloadScanner"], "ClamAV (separate official installation required)")
+        self.assertEqual(info["malwareProtection"]["downloadScanner"], "ClamAV (installed by Kumo Installer)")
         self.mocks["verified_malware_resources"].assert_called_once_with()
         self.mocks["verify_malware_start"].assert_called_once_with(self.destination)
 
@@ -173,7 +173,9 @@ class OptionalModelAssembly(unittest.TestCase):
         self.assertTrue((helper / "MacOS/KumoPhishingHost").is_file())
         self.assertTrue((helper / "Resources/PhishLang/PhishLang.mlmodelc/model.mil").is_file())
         self.assertTrue((helper / "Resources/PhishLang/vocab.txt").is_file())
-        self.assertTrue((self.destination / "Contents/Resources/phishing-host-template.json").is_file())
+        self.assertFalse((self.destination / "Contents/Resources/phishing-host-template.json").exists())
+        self.assertIs(info["phishingProtection"]["enabledByDefault"], True)
+        self.assertFalse((self.destination / "Contents/Resources/KumoExtension").exists())
         commands = [[str(argument) for argument in call.args] for call in self.mocks["run"].call_args_list]
         self.assertIn(["bash", str(self.root / "scripts/build-phishing.sh")], commands)
         self.assertTrue(any(command[0] == "codesign" and "app.kumo.phishing" in command for command in commands))

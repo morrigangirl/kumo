@@ -1,189 +1,269 @@
 # GitHub Release updates
 
-Kumo's browser app updates come from
+Kumo downloads browser updates from
 [`morrigangirl/kumo` Releases](https://github.com/morrigangirl/kumo/releases).
-The stable appcast is the `appcast.xml` asset of the latest published release:
+The stable feed is the `appcast.xml` asset of the latest published release:
 
 ```text
 https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml
 ```
 
-Each feed item points to a ZIP on its exact release tag. The app requires
+Each feed item points to the browser ZIP on its exact release tag. Kumo requires
 Sparkle Ed25519 signatures for both the ZIP and the entire appcast, verifies
-before extraction, and does not let an invalid feed become acceptable after a
-timeout. Apple Developer ID signing and notarization are also mandatory for a
-production update. A GitHub account or repository token is not needed to
-download these public updates.
+before extraction, and rejects an invalid feed even after a timeout. Production
+updates also require Apple Developer ID signing and notarization. Downloading a
+public update does not require a GitHub account or repository token.
 
-The pinned official Sparkle distribution is recorded in
+The official Sparkle distribution is pinned in
 [`config/sparkle-lock.json`](../config/sparkle-lock.json). The dedicated release
-signing key already exists in the build Mac's login Keychain under
-`app.kumo.browser.release`. Only its public key is in
-[`config/release.json`](../config/release.json). The release tools do not export
-private keys or accept private keys as command arguments.
+key is in the build Mac's login Keychain under `app.kumo.browser.release`; only
+its public key is in [`config/release.json`](../config/release.json). The release
+tools do not export private keys or accept them as command arguments.
 
-The latest stable release is [Kumo 0.1.2, build 202610210003](https://github.com/morrigangirl/kumo/releases/tag/v0.1.2-202610210003), published on October 21, 2026. Apple accepted the Carson Press LLC Developer ID-signed app; its stapled ticket, Gatekeeper assessment and all 26 native code signatures passed verification. The publisher verified the Sparkle archive/feed signatures and downloaded draft assets. Independent anonymous checks then matched all five published asset sizes/digests and fetched the exact signed appcast bytes. Production builds have update checks enabled; Apple Development builds remain disabled. See [0.1.2 production validation](security-audits/2026-10-21/0.1.2-production-release.md) and [production signing](signing.md).
+## Published history and the pending native release
 
-The first public binary excluded PhishLang. Kumo 0.1.1 and later bundle
-the experimental checkpoint and its native inference helper, with warnings off
-by default. Dangerous-domain blocking and ClamAV download scanning remain included.
-Package without `--without-phishlang` to include the model. Model preparation
-uses the pinned Python 3.9 conversion dependencies on an Apple Silicon build host;
-they are not installed on users' Macs.
+[Kumo 0.1.2, build 202610210003](https://github.com/morrigangirl/kumo/releases/tag/v0.1.2-202610210003)
+was published on October 21, 2026. Its signed app, notarization, update/archive
+signatures and five published assets passed the recorded verification. See
+[0.1.2 production validation](security-audits/2026-10-21/0.1.2-production-release.md).
+Published artifacts and tags remain immutable.
 
-On October 20, 2026, the project owner accepted the paper's CC BY 4.0 license
-interpretation for the authors' repository and checkpoint, and authorized public
-distribution with attribution and change notices. A separate distribution decision
-binds that acceptance to the exact pinned checkpoint. The original conversion
-metadata is preserved; production checks require the matching accepted decision
-and bundled citation. See [provenance and behavior](phishing-protection.md).
+**0.2.0 / 202610210004 is an unreleased target.** The full native engine build and
+qualification are in progress. Current source implementation and focused tests
+do not establish a completed browser build, notarized installer or successful
+installation on a target Mac. The commands below describe the pending release
+flow and must use the final reviewed, committed source.
 
-## Prepare a release
+Kumo 0.2 moves product controls into native browser Settings and removes the Kumo
+product extension. PhishLang defaults on for new profiles and unset preferences;
+explicit opt-outs are preserved. An enabled preference does not imply that the
+model is ready. Desktop AI access remains separately disabled until the user
+allows it. Ordinary third-party extensions remain supported.
 
-Commit the reviewed source and increase `build` in `config/release.json` for
-every release, including a rebuild with the same marketing version. Builds are
-positive integers; the initial `202610190001` also exceeds the old engine-based
-bundle version. Marketing versions contain three decimal components and cannot
-decrease. Release tags use `v<version>-<build>`, so the publishing tool can check
-all existing GitHub releases, including drafts, for a reused or lower build.
-An old release with an unknown tag shape stops publishing for explicit
-reconciliation rather than silently assuming its version.
+Historically, 0.1.0 excluded PhishLang; 0.1.1 and 0.1.2 included its experimental
+checkpoint with warnings off by default. On October 20, 2026, the owner accepted
+the paper's CC BY 4.0 interpretation for the authors' repository/checkpoint and
+authorized distribution with attribution and change notices. This decision is
+bound to the exact checkpoint; it is distinct from upstream license evidence.
+The matching decision, citation and license notices remain required in native
+0.2 packages. See [phishing protection](phishing-protection.md).
 
-Update `docs/releases/<version>.md`, then tag the exact reviewed commit and push
-that tag. The examples below show the published 0.1.2 tuple. For a future release,
-use its newly increased build and reviewed source commit; never recreate or
-retarget a published tag.
+## Prerequisites and release identity
+
+Commit reviewed source and increase `build` in `config/release.json` for every
+release, including a rebuild of the same marketing version. Marketing versions
+have three decimal components and cannot decrease. Tags use
+`v<version>-<build>`. The publisher checks all remote releases, including drafts,
+and refuses reused/lower build counters or an ambiguous historical tag.
+
+Update `docs/releases/<version>.md`, finish qualification, and create/push the tag
+at the exact final reviewed commit. Never recreate or retarget a published tag.
+For the pending tuple, those eventual commands are:
 
 ```sh
-git tag -a v0.1.2-202610210003 -m 'Kumo 0.1.2'
-git push origin v0.1.2-202610210003
+git tag -a v0.2.0-202610210004 -m 'Kumo 0.2.0'
+git push origin v0.2.0-202610210004
 ```
 
-Prepare the pinned tools and data, finish the locked source build and package
-its completed app. Use an isolated source workspace for the reviewed release
-commit; the [source build instructions](source-build.md) describe build
-requirements. Do not use the upstream preview for a release.
+Use an Apple Silicon build Mac with the [source-build prerequisites](source-build.md),
+Xcode and its accepted license, Swift, the documented Python versions, GitHub CLI,
+and sufficient storage for a full Chromium build. Model conversion uses pinned
+Python 3.9 wheels on the build host; Python and model conversion tools are not
+installed on users' Macs. The bundled, pinned Node runtime is a separate signed
+payload; users do not need a system Node installation.
+
+Three signing capabilities are distinct:
+
+| Purpose | Required identity or key |
+| --- | --- |
+| Browser, helpers and Setup developer payload | Carson Press LLC Developer ID Application certificate and private key |
+| Standard public Apple installer | Carson Press LLC Developer ID Installer certificate and private key |
+| Update ZIP and appcast | Configured Sparkle Ed25519 Keychain key |
+
+An existing `notarytool` Keychain profile must work in the signing session.
+An approved browser-passkey provisioning profile is optional and does not itself
+provide Apple Passwords filling. See [production signing](signing.md).
+
+For the complete installer, prepare the exact original Cisco package from
+`config/clamav-lock.json`, matching ClamAV source/license inputs, the pinned
+unmodified runtime at `/usr/local/clamav`, and current signed definitions.
+Packaging verifies those inputs; it does not install the runtime on the build
+Mac. Define `KUMO_CLAMAV_DATABASE` as the prepared database directory containing
+all three `.cvd` files and their matching detached signatures. Its signed daily
+timestamp must satisfy the 72-hour policy when the installer is assembled.
+See the [installer build and trust boundary](../native/installer/README.md).
+
+## Prepare the browser update
+
+Prepare pinned tools/data, complete the locked source build, and package its
+finished app. Use the reviewed commit in an isolated source workspace. An
+upstream preview app is not eligible for a release.
 
 ```sh
-python3 scripts/prepare-sparkle.py
 python3 scripts/prepare-release-vendor.py
+python3 scripts/prepare-sparkle.py
+python3 scripts/prepare-agent-runtime.py
 python3 scripts/prepare-malware-feed.py
 /usr/bin/python3 scripts/prepare-phishlang.py
-scripts/build-source.sh build --work-dir build/release-source-0.1.2-202610210003
+scripts/build-source.sh build --work-dir build/release-source-0.2.0-202610210004
 python3 scripts/package.py \
-  --engine-app build/release-source-0.1.2-202610210003/recipe/build/src/out/Default/Chromium.app
+  --engine-app build/release-source-0.2.0-202610210004/recipe/build/src/out/Default/Chromium.app
 
 python3 scripts/github-release.py doctor
 python3 scripts/github-release.py prepare \
   --app dist/Kumo.app \
-  --output dist/github-releases/v0.1.2-202610210003 \
-  --notes docs/releases/0.1.2.md \
-  --identity 'THE_40_CHARACTER_DEVELOPER_ID_SHA1' \
-  --notary-profile 'EXISTING_NOTARYTOOL_KEYCHAIN_PROFILE'
+  --output dist/github-release-base/v0.2.0-202610210004 \
+  --notes docs/releases/0.2.0.md \
+  --identity 'EXISTING_DEVELOPER_ID_APPLICATION_SHA1' \
+  --notary-profile 'EXISTING_NOTARYTOOL_PROFILE'
 ```
 
-`prepare` invokes the existing release signer on a separate copy. It requires a
-clean committed checkout, verified source receipt, exact app version and feed
-configuration, the configured Keychain Ed25519 key, successful notarization,
-stapling and Gatekeeper assessment. If approved browser-passkey provisioning is
-available, also pass `--profile` with that existing Developer ID profile. The
-input app is preserved. No GitHub release is created by this command.
+If `build/agent-runtime` already exists, use the preparer's `--verify` mode rather
+than overwriting it. Add `--notary-keychain` when the profile requires an explicit
+Keychain path. Add `--profile` only for an existing approved browser-passkey
+profile.
 
-The output contains exactly five assets:
+`prepare` signs a separate copy. It requires a clean committed checkout,
+completed source receipt, exact version/feed configuration, the configured
+Ed25519 key, accepted notarization, stapling and Gatekeeper assessment. It
+preserves the input app and creates no GitHub release.
 
-- `Kumo-<version>-<build>-macos-arm64.zip`: the signed, stapled app, archived by
-  `ditto` with framework symlinks preserved.
-- `appcast.xml`: the signed feed with plain text release notes, exact archive
-  URL, Ed25519 signature, byte length, minimum macOS version and Apple silicon
-  requirement.
-- `release.json`: public source commit, source receipt checksum, app identity,
-  notarization status, archive checksum and signature.
-- `release-notes.md`: the reviewed release text.
-- `SHA256SUMS`: checksums for the other four assets.
+This first stage creates **five base assets**. They are sufficient for inspecting
+the signed browser update, but **0.2 and later cannot upload or publish without
+the complete notarized installer**.
 
-An unpublished preparation draft may exist before these assets are ready.
-Replace its preparation body with the exact final `release-notes.md` before
-using `upload`; the publisher refuses different notes or unexpected assets.
-Create and push the exact source tag only after the final release source and
-model scope are settled. Never publish a preparation draft without its verified
-browser archive and signed appcast.
+## Add the complete installer
 
-The tool extracts the finished ZIP and rechecks its real app signature,
-notarization and source receipt before publishing the local output directory.
-It refuses to overwrite an existing directory. Archives must be under GitHub's
-2 GiB per-asset limit. The recipe is repeatable; timestamped Apple signatures
-and notarization mean independent builds are not promised identical bytes.
+Use the exact signed browser from the prepared ZIP as the Setup input. Its
+CodeDirectory hash must match the app inside the public installer. Build the
+current release Setup executable; an older binary without `--package-policy`
+will be rejected.
+
+```sh
+mkdir -p dist/installer/v0.2.0-202610210004
+ditto -x -k \
+  dist/github-release-base/v0.2.0-202610210004/Kumo-0.2.0-202610210004-macos-arm64.zip \
+  dist/installer/v0.2.0-202610210004/browser
+xcrun swift build --package-path native/installer \
+  --scratch-path build/installer-native -c release --arch arm64
+KUMO_SETUP_BIN=$(xcrun swift build --package-path native/installer \
+  --scratch-path build/installer-native -c release --arch arm64 --show-bin-path)
+python3 scripts/build-installer.py \
+  --app dist/installer/v0.2.0-202610210004/browser/Kumo.app \
+  --definitions "$KUMO_CLAMAV_DATABASE" \
+  --executable "$KUMO_SETUP_BIN/KumoSetup" \
+  --output 'dist/installer/v0.2.0-202610210004/Kumo Setup.app' \
+  --sign \
+  --identity 'EXISTING_DEVELOPER_ID_APPLICATION_SHA1' \
+  --notary-profile 'EXISTING_NOTARYTOOL_PROFILE'
+python3 scripts/build-installer-pkg.py \
+  --setup-app 'dist/installer/v0.2.0-202610210004/Kumo Setup.app' \
+  --output dist/installer/v0.2.0-202610210004/Kumo.pkg \
+  --identity 'Developer ID Installer: Carson Press LLC (PV65ZWXCWX)' \
+  --notary-profile 'EXISTING_NOTARYTOOL_PROFILE'
+python3 scripts/github-release.py with-installer \
+  --artifacts dist/github-release-base/v0.2.0-202610210004 \
+  --installer dist/installer/v0.2.0-202610210004/Kumo.pkg \
+  --output dist/github-releases/v0.2.0-202610210004
+```
+
+`Kumo Setup.app` and its developer ZIP are build intermediates. The public fresh
+installation flow is the standard `.pkg`; it installs ordered Cisco components,
+then invokes Kumo's dedicated package helper without a nested Installer session.
+Definitions, scheduled updates and a harmless scan are required for readiness.
+Normal failure restores the previous browser; Cisco's separate components are
+not rolled back. Actual installation/upgrade/recovery still needs target-Mac
+acceptance testing. Signing/notarization does not replace those checks.
+
+`with-installer` independently authenticates the actual package: trusted Carson
+Press Installer signature, stapled ticket, Gatekeeper, fixed scripts/targets,
+sealed Setup/browser and exact Cisco component provenance. It matches browser
+version, build, team and CodeDirectory hash against the actual update ZIP. It
+never trusts an adjacent installer receipt or installs the package.
+
+It creates a new, exclusive **six-asset directory**, preserving the original base
+directory. ZIP, appcast and release notes remain byte-identical. The added
+installer record is bound into `release.json` and `SHA256SUMS` is regenerated.
+
+| Final asset | Purpose |
+| --- | --- |
+| `Kumo-<version>-<build>-macos-arm64.zip` | Signed, stapled browser for the automatic updater; `ditto` preserves framework symlinks |
+| `Kumo-<version>-<build>-macos-arm64.pkg` | Signed, notarized complete Apple installer for initial installation/repair |
+| `appcast.xml` | Signed feed pointing to the exact ZIP, with its signature, size and platform requirements |
+| `release.json` | Public source/app provenance and verified installer identity, size and digest |
+| `release-notes.md` | Exact reviewed notes |
+| `SHA256SUMS` | Digests of the other five assets |
+
+The appcast continues to deliver the browser ZIP. The installer is a separate
+release asset; its trust comes from Apple signing/notarization and independent
+payload verification. An unsigned review package cannot enter this release flow.
+All assets must be regular single-link files, and binary assets must fit GitHub's
+2 GiB limit. Existing outputs are never overwritten. Timestamped Apple signatures
+mean independent builds are not promised identical bytes.
 
 ## Upload and publish
 
-The GitHub CLI must already be signed in with permission to create releases.
-Uploading defaults to a **draft**:
+The GitHub CLI must already be signed in with release permissions. Source must
+remain the clean reviewed checkout with its exact pushed tag. Upload defaults
+to a draft and, for native 0.2+, requires all six verified assets:
 
 ```sh
 python3 scripts/github-release.py verify \
-  --artifacts dist/github-releases/v0.1.2-202610210003
-
+  --artifacts dist/github-releases/v0.2.0-202610210004
 python3 scripts/github-release.py upload \
-  --artifacts dist/github-releases/v0.1.2-202610210003
+  --artifacts dist/github-releases/v0.2.0-202610210004
 ```
 
-The tool requires the exact source tag, checks all release build counters,
-uploads without `--clobber`, and downloads the completed draft to verify the
-bytes and signatures. A partial upload can resume only when the existing
-assets match exactly. Published releases are never edited or overwritten by
-this tool. Review the draft, then make it public and latest:
+The tool checks monotonic releases, uploads without `--clobber`, downloads every
+draft asset, and reruns verification. A partial draft resumes only when existing
+assets match exactly. Notes must match `release-notes.md`; unexpected assets or
+changed bytes stop publication. Review the qualified draft, then publish:
 
 ```sh
 python3 scripts/github-release.py upload \
-  --artifacts dist/github-releases/v0.1.2-202610210003 \
-  --publish
+  --artifacts dist/github-releases/v0.2.0-202610210004 --publish
 ```
 
-Publish every stable release with its own `appcast.xml`; GitHub's
-`latest/download/appcast.xml` URL then switches with that complete release.
-Never put unsigned downloads or a GitHub API response in the appcast URL.
-Keep old published assets available for existing feeds. If a faulty build must
-be replaced, ship a new, higher build instead of replacing its bytes.
+This command is not evidence that pending 0.2.0 has been published. Publish only
+after final qualification and notes review. Every stable release has its own
+`appcast.xml`; GitHub's latest feed URL switches with that complete release.
+Never replace old published bytes, put unsigned downloads in the feed, or use a
+GitHub API response as an appcast. A correction needs a higher build.
 
-## Optional GitHub Actions runner
+## Dedicated GitHub Actions runner
 
-The manual [release workflow](../.github/workflows/release.yml) runs only for
-this repository's protected `main` branch, using a dedicated self-hosted Apple
-silicon runner labeled `kumo-release`. Configure its `github-release`
-environment to require a maintainer's approval and allow only `main`. Do not
-attach this signing runner to pull request workflows. A current Actions Runner
-supporting checkout v6 is required.
+The manual [release workflow](../.github/workflows/release.yml) is restricted to
+this repository's protected `main` branch and a dedicated self-hosted Apple
+Silicon runner labeled `kumo-release`. Its `github-release` environment should
+require maintainer approval and permit only `main`. Do not expose this signing
+runner to pull-request jobs. A checkout-v6-compatible Actions Runner is required.
 
-Install Xcode and accept its license; provide the source build's documented
-Node and storage prerequisites, Python 3.12+ for safe Sparkle archive
-preparation, and Python 3.9 for the pinned PhishLang conversion wheels. Install the selected team's Apple
-Development and Developer ID identities, the dedicated Sparkle key, and the existing notarytool profile
-in that runner's Keychain. The Keychain must permit these signing tools in the
-runner session. This workflow deliberately does not export certificates,
-import private-key secrets, create signing accounts or bypass Keychain prompts.
+The runner needs the source/model prerequisites above, both Developer ID
+identities, the Sparkle key, accessible notary profile, a current ClamAV runtime
+and signed database, exact original vendor package, matching source archive and
+notices. The workflow does not install prerequisites, export certificates,
+import private keys or bypass Keychain prompts.
 
-Set these environment variables in the GitHub `github-release` environment:
-
-| Variable | Value |
+| Environment variable | Value |
 | --- | --- |
-| `KUMO_DEVELOPER_ID_SHA1` | Public SHA-1 identity selector for the installed Developer ID Application certificate |
-| `KUMO_NOTARY_PROFILE` | Name of the installed notarytool Keychain profile |
-| `KUMO_PASSKEY_PROFILE` | Optional local path of the approved Developer ID browser-passkey profile |
+| `KUMO_DEVELOPER_ID_SHA1` | Installed Developer ID Application identity selector |
+| `KUMO_INSTALLER_IDENTITY` | Installed Carson Press Developer ID Installer identity name |
+| `KUMO_NOTARY_PROFILE` | Existing accessible notarytool Keychain profile name |
+| `KUMO_NOTARY_KEYCHAIN` | Optional maintainer Keychain path; forwarded to browser, Setup and package notarization |
+| `KUMO_CLAMAV_DATABASE` | Real directory containing current signed CVD databases and detached signatures |
+| `KUMO_PASSKEY_PROFILE` | Optional approved Developer ID browser-passkey provisioning profile path |
 
-The workflow builds the exact checked out commit, packages it with the pinned
-PhishLang model and required citation, signs and notarizes it,
-prepares and verifies the assets, then uploads a draft. Its **publish** input
-defaults to false. The scoped GitHub token is used only for the upload step.
-The workflow itself has not been dispatched during local implementation.
+The workflow prepares the exact checked-out source, builds native Kumo, signs
+and notarizes the browser, prepares five base update assets, builds/signs/notarizes
+the complete installer, attaches it as the sixth asset, and uploads a verified
+draft. The **publish** input defaults false. The scoped GitHub token is available
+only to upload. The updated six-asset workflow has not been dispatched as part
+of local implementation.
 
-Checkout deliberately uses `clean: false` to preserve the dedicated runner's
-ignored `vendor/`, `build/` and download caches. It still refuses tracked or
-untracked source changes before building. `prepare-release-vendor.py` obtains
-the two exact public upstream commits from `config/source-lock.json` and the
-macOS recipe's pinned submodules. It verifies clean existing checkouts before
-moving them to a new locked revision; it never resets or deletes local vendor
-changes. Each release source tree is named with the exact source commit so
-prepared trees from earlier releases remain available for diagnosis.
+Checkout uses `clean: false` to retain ignored source/download caches, then
+refuses tracked or untracked source changes. Vendor preparation verifies existing
+checkouts before moving to locked revisions; it does not reset local changes.
+Keep earlier release source trees available for diagnosis.
 
 References: [Sparkle publishing](https://sparkle-project.org/documentation/publishing/),
 [Sparkle signature policy](https://sparkle-project.org/documentation/customization/),

@@ -16,6 +16,7 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -25,7 +26,7 @@ LOCK_PATH = ROOT / "config/source-lock.json"
 GN_PATH = ROOT / "config/chromium.gn"
 VENDOR = ROOT / "vendor/ungoogled-chromium-macos"
 INTEGRATION_OVERLAYS = ("extensions_overlay.py", "malware_overlay.py",
-                        "macos_recipe_compat.py")
+                        "macos_recipe_compat.py", "browser_integration_overlay.py")
 DOWNLOAD_GUARD_INPUTS = ("kumo_download_guard.h", "kumo_download_guard.mm")
 # Exact post-common/macOS/domain preimage; refresh only after a reviewed probe.
 ENTERPRISE_PROFILE_PREIMAGE_SHA256 = "e5680cca4d6c5ff2d0406e17baa44c49283f38807a7429bd0e650b6b618d4900"
@@ -305,6 +306,23 @@ def verify_integration_inputs():
         path = ROOT / "native/chromium" / name
         if not path.is_file() or path.is_symlink():
             raise RuntimeError(f"Missing native download security input: {name}; no source downloaded")
+    native_input_files()
+
+
+def native_input_files():
+    """Fingerprint complete native trees; never omit nested sources or follow links."""
+    result = []
+    for relative in ("native/chromium", "native/browser"):
+        folder = ROOT / relative
+        if not folder.is_dir() or folder.is_symlink():
+            raise RuntimeError(f"Missing direct native integration source directory: {relative}")
+        for path in sorted(folder.rglob("*")):
+            mode = path.lstat().st_mode
+            if stat.S_ISLNK(mode) or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise RuntimeError(f"Unsafe native integration input: {path.relative_to(ROOT)}")
+            if stat.S_ISREG(mode):
+                result.append(path)
+    return result
 
 
 def input_digest():
@@ -315,7 +333,7 @@ def input_digest():
         overlay = ROOT / "scripts" / name
         if overlay.is_file():
             paths.append(overlay)
-    paths.extend(sorted((ROOT / "native/chromium").glob("*")))
+    paths.extend(native_input_files())
     for path in paths:
         if path.is_file():
             h.update(str(path.relative_to(ROOT)).encode())
@@ -421,7 +439,10 @@ def prepare(work, lock):
             raise RuntimeError("Prepared source is missing its native malware download stage; use a new --work-dir.")
         if "passwordless" not in state["done"] or "native-passwords" in state["done"]:
             raise RuntimeError("Prepared source has not verified removal of Kumo's password integration; use a new --work-dir.")
+        if "native-browser" not in state["done"]:
+            raise RuntimeError("Prepared source is missing native Kumo browser integration; use a new --work-dir.")
         verify_passwordless_source(work / "recipe/build/src")
+        run(sys.executable, ROOT / "scripts/browser_integration_overlay.py", work / "recipe/build/src", "--verify-applied")
         compatibility_linker(work / "recipe/build/src", lock)
         print(f"Prepared source: {work / 'recipe/build/src'}")
         return
@@ -453,6 +474,7 @@ def prepare(work, lock):
     stage("passwordless", lambda: verify_passwordless_source(src))
     stage("extensions", lambda: run(sys.executable, ROOT / "scripts/extensions_overlay.py", src))
     stage("malware-downloads", lambda: run(sys.executable, ROOT / "scripts/malware_overlay.py", src))
+    stage("native-browser", lambda: run(sys.executable, ROOT / "scripts/browser_integration_overlay.py", src))
     def configure():
         destination = src / "out/Default"
         destination.mkdir(parents=True, exist_ok=True)
@@ -480,6 +502,7 @@ def build(work, lock, jobs):
     # A prepared-state label alone cannot attest that the mandatory completion
     # hook and copied native guard still match the reviewed repository inputs.
     verify_passwordless_source(src)
+    run(sys.executable, ROOT / "scripts/browser_integration_overlay.py", src, "--verify-applied")
     run(sys.executable, ROOT / "scripts/malware_overlay.py", src, "--verify-applied")
     # Missing bindgen or Crubit is a failed official-toolchain verification.
     # Never substitute a local build using the obsolete platform helper.
@@ -530,6 +553,7 @@ def build(work, lock, jobs):
     compatibility_linker(src, lock, verify_only=True)
     verify_macos_platform(recipe, lock)
     verify_passwordless_source(src)
+    run(sys.executable, ROOT / "scripts/browser_integration_overlay.py", src, "--verify-applied")
     run(sys.executable, ROOT / "scripts/malware_overlay.py", src, "--verify-applied")
     receipt.record_build(app, ROOT, build_inputs, args_path)
     print(f"Compiled and locally signed engine: {app}")
@@ -593,7 +617,7 @@ def main():
         parser.error("Chromium source/build paths must not contain spaces")
     if args.dry_run:
         print(f"Pinned Chromium {lock['chromiumVersion']} / mac packaging {lock['macosPackaging']['commit']}\nWorkspace: {work}")
-        print("prepare: verify pinned checkouts; copy isolated recipe; download+verify locked archive; prune; apply both patch stacks; domain substitution; download+verify arm64 tools and immutable SDK-compatible linker; brand Kumo; restore Store isolation + FedCM; verify no Kumo password integration; add anonymous signed Store updates and malware download completion gate; write GN args")
+        print("prepare: verify pinned checkouts; copy isolated recipe; download+verify locked archive; prune; apply both patch stacks; domain substitution; download+verify arm64 tools and immutable SDK-compatible linker; brand Kumo; restore Store isolation + FedCM; verify no Kumo password integration; add anonymous signed Store updates and malware download completion gate; compile native Kumo Settings, menus, new tab, agent/protection services and retire the product extension; write GN args")
         print(f"build: verify official toolchains including prebuilt bindgen/Crubit; GN bootstrap; gn gen --fail-on-unused-args; ninja -C out/Default -j {args.jobs} chrome; upstream ad-hoc signing")
         print(f"package: python3 scripts/package.py --engine-app {work / 'recipe/build/src' / lock['engineBundle']}")
         print("No commands executed. Safe Browsing is unavailable in this source base. Password extensions use Chromium's normal extension APIs.")

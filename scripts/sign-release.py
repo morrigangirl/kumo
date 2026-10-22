@@ -192,6 +192,12 @@ def inventory(app, config, profile_approved=False):
         ent = dict(main_ent, **metadata["entitlements"]) if primary else metadata["entitlements"]
         ent = clean_entitlements(ent, config, primary, profile_approved, jit)
         identifier = config["bundleIdentifier"] if primary else metadata["identifier"] or bundle_info(target).get("CFBundleIdentifier")
+        if relative == "Contents/Resources/agent-bridge/bin/node":
+            # This runtime executes only the fixed local MCP code in jitless
+            # mode; never inherit V8/browser JIT or other broad entitlements.
+            ent = {}
+            flags |= MAIN_POLICY
+            identifier = "app.kumo.agent.runtime"
         if not identifier:
             identifier = config["bundleIdentifier"] + ".code." + hashlib.sha256(relative.encode()).hexdigest()[:16]
         items.append(Item(relative, identifier, flags, ent))
@@ -269,7 +275,7 @@ def configure_release_updater(staged, notarization_requested):
     }
     if any(info.get(key) != value or type(info.get(key)) is not type(value) for key, value in expected.items()):
         raise RuntimeError("Packaged updater trust or version metadata does not match the release.")
-    build_path = resources / "KumoExtension/build-info.json"
+    build_path = resources / "kumo-build-info.json"
     build = json.loads(build_path.read_text())
     release_api["validate_public_model_scope"](build)
     updates = build.get("appUpdates", {})
@@ -398,11 +404,12 @@ def main():
     info = bundle_info(app)
     if info.get("CFBundleIdentifier") != config["bundleIdentifier"] or info.get("CFBundleExecutable") != "Kumo":
         blockers.append("Input must be the completed packaged Kumo app with the selected bundle identifier and Swift launcher.")
-    build_file = app / "Contents/Resources/KumoExtension/build-info.json"
+    build_file = app / "Contents/Resources/kumo-build-info.json"
     build = json.loads(build_file.read_text())
     try:
         release_api = runpy.run_path(str(ROOT / "scripts/github-release.py"))
         release_api["validate_public_model_scope"](build)
+        release_api["validate_native_browser"](app, build)
     except RuntimeError as error:
         blockers.append(str(error))
     if build.get("sourceCompiledLocally") is not True:

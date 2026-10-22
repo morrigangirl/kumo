@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "version": "22.23.4",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "archiveName": "node-v22.23.4-darwin-arm64.tar.gz",
+  "archiveURL": "https://nodejs.org/dist/v22.23.4/node-v22.23.4-darwin-arm64.tar.gz",
+  "checksumsURL": "https://nodejs.org/dist/v22.23.4/SHASUMS256.txt",
+  "archiveBytes": 49996369,
+  "archiveSHA256": "c9e1dbc748b33ed2d14f42445191ecaf14c56259c7a9a26d0042c49ec2b66428",
+  "nodeSHA256": "2cc28a1880d0774616959f2210ee739bffa6ac695c887e8988a496a21271f6c0",
+  "licenseSHA256": "c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4",
+  "licenseFile": "LICENSE.node",
+  "executionArgs": ["--jitless", "--no-expose-wasm"],
+  "sourceURL": "https://nodejs.org/dist/v22.23.4/node-v22.23.4.tar.gz",
+  "licenseURL": "https://github.com/nodejs/node/blob/v22.23.4/LICENSE",
+  "checksumAuthority": "Official Node.js HTTPS release SHASUMS256.txt; exact archive checksum pinned at preparation",
+  "minimumMacOS": "13.0"
+}

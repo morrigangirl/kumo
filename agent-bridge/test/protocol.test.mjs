@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { NativeDecoder, nativeMessage, LineDecoder, authorize, validateState, validateCommand } from '../lib/protocol.mjs';
 import { createMcpHandler, TOOLS } from '../lib/mcp.mjs';
 
-test('Native Messaging decodes split frames, multiple frames and UTF-8', () => {
+test('Private browser pipes decode split frames, multiple frames and UTF-8', () => {
   const decoder = new NativeDecoder();
   const value = { text: 'Kumo 雲 ☁️' };
   const bytes = nativeMessage(value);
@@ -54,4 +54,10 @@ test('MCP negotiates tools, validates arguments and reports authorization failur
   assert.equal(calls.length, 1);
   assert.equal(await handler({ jsonrpc: '2.0', method: 'notifications/initialized' }), null);
   assert.equal((await handler({ jsonrpc: '2.0', id: 5, method: 'executeJavaScript' })).error.code, -32601);
+});
+
+test('duplicate browser grants and setup verbs cannot enter the agent protocol', () => {
+  assert.throws(() => validateState({enabled: true, allowNewTabs: false, grants: [{tabId: 1, origin: 'https://example.com'}, {tabId: 1, origin: 'https://evil.example'}]}), /Duplicate/);
+  for (const action of ['provider-configure', 'agents.connectCodex', 'executeJavaScript', 'state']) assert.throws(() => validateCommand(action, {}), /Unknown/);
+  assert.ok(TOOLS.every(tool => !/setup|configure|provider/.test(tool.name)));
 });

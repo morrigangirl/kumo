@@ -1,15 +1,20 @@
 import path from 'node:path';
 import {homedir, tmpdir} from 'node:os';
 import {constants} from 'node:fs';
-import {access, chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, rm} from 'node:fs/promises';
+import {access, chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, symlink} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {randomUUID, createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 
 export const DESKTOP_MCP_COMMAND = 'exec "$HOME/.kumo/agents/server/run" mcp';
 export const DESKTOP_MCP = Object.freeze({command: '/bin/sh', args: ['-c', DESKTOP_MCP_COMMAND]});
+export function desktopMcp(profile) {
+  if (!/^[a-f0-9]{32}$/.test(profile || '')) throw new Error('A native browser profile identifier is required');
+  return {command: '/bin/sh', args: ['-c', DESKTOP_MCP_COMMAND + ' --profile ' + profile]};
+}
 export const PORTABLE_FILES = Object.freeze(['cli.mjs', 'desktop.mjs', 'run', 'package.json',
-  'lib/broker.mjs', 'lib/runtime.mjs', 'lib/protocol.mjs', 'lib/mcp.mjs']);
+  'lib/broker.mjs', 'lib/runtime.mjs', 'lib/protocol.mjs', 'lib/mcp.mjs',
+  'bin/node', 'LICENSE.node', 'runtime.json']);
 const SOURCE = path.dirname(fileURLToPath(import.meta.url));
 const MAX_CONFIG = 2 * 1024 * 1024;
 const uid = process.getuid?.();
@@ -87,43 +92,61 @@ export async function atomicPrivateWrite(file, data, {anchor = homedir(), mode =
   } finally { await descriptor.close().catch(() => {}); await rm(temporary, {force: true}); }
 }
 
-async function verifyPayload(directory) {
-  const allowed = new Set(PORTABLE_FILES);
-  for (const parent of ['', 'lib']) {
+const payloadLimit = name => name === 'bin/node' ? 256 * 1024 * 1024 : 2 * 1024 * 1024;
+async function payload(directory, {allowRoot = false, legacy = false} = {}) {
+  const names = legacy ? PORTABLE_FILES.filter(name => !['bin/node', 'LICENSE.node', 'runtime.json'].includes(name)) : PORTABLE_FILES;
+  const allowed = new Set(names), values = new Map();
+  for (const parent of ['', 'lib', ...(legacy ? [] : ['bin'])]) {
     const folder = path.join(directory, parent), state = await lstat(folder);
-    if (!state.isDirectory() || state.isSymbolicLink() || uid !== undefined && state.uid !== uid) throw new Error('Unsafe bridge payload directory.');
+    if (!state.isDirectory() || state.isSymbolicLink() || uid !== undefined && state.uid !== uid && !(allowRoot && state.uid === 0) || state.mode & 0o022) throw new Error('Unsafe bridge payload directory.');
     for (const entry of await readdir(folder, {withFileTypes: true})) {
       const relative = parent ? `${parent}/${entry.name}` : entry.name;
-      if (relative === 'lib' && entry.isDirectory()) continue;
+      if (['lib', 'bin'].includes(relative) && entry.isDirectory() && !entry.isSymbolicLink()) continue;
       if (!allowed.has(relative) || !entry.isFile() || entry.isSymbolicLink()) throw new Error('Unexpected bridge payload file.');
-      await readPrivateFile(path.join(directory, relative), {maximum: 1024 * 1024, missing: false});
     }
   }
-  for (const name of PORTABLE_FILES) await readPrivateFile(path.join(directory, name), {maximum: 1024 * 1024, missing: false});
+  for (const name of names) values.set(name, await readPrivateFile(path.join(directory, name), {maximum: payloadLimit(name), missing: false, allowRoot}));
+  return values;
 }
 
 export async function installPortableRuntime({home = homedir(), runtimeDir = path.join(home, '.kumo', 'agents'), sourceDir = SOURCE} = {}) {
-  const anchor = contained(runtimeDir, home) ? home : runtimeDir;
-  await privateDirectory(runtimeDir, {anchor});
-  if (contained(runtimeDir, home)) await privateDirectory(path.join(home, '.kumo'), {anchor: home});
-  const server = path.join(runtimeDir, 'server'), staging = path.join(runtimeDir, `.server-install-${randomUUID()}`);
-  const previous = path.join(runtimeDir, `.server-previous-${randomUUID()}`);
-  await mkdir(staging, {mode: 0o700}); await mkdir(path.join(staging, 'lib'), {mode: 0o700});
-  let hadPrevious = false, published = false;
+  await privateDirectory(runtimeDir, {anchor: home});
+  const values = await payload(sourceDir, {allowRoot: true});
+  const hash = createHash('sha256');
+  for (const [name, data] of values) { hash.update(name); hash.update('\0'); hash.update(data); }
+  const version = hash.digest('hex'), versions = path.join(runtimeDir, 'versions');
+  await privateDirectory(versions, {anchor: home});
+  const target = path.join(versions, version), staging = path.join(versions, `.install-${randomUUID()}`);
   try {
-    const sourceState = await lstat(sourceDir), libraryState = await lstat(path.join(sourceDir, 'lib'));
-    if (!sourceState.isDirectory() || sourceState.isSymbolicLink() || !libraryState.isDirectory() || libraryState.isSymbolicLink()) throw new Error('Unsafe bridge source payload.');
-    for (const name of PORTABLE_FILES) {
-      const data = await readPrivateFile(path.join(sourceDir, name), {maximum: 1024 * 1024, missing: false, allowRoot: true});
-      await atomicPrivateWrite(path.join(staging, name), data, {anchor: runtimeDir, mode: name === 'run' ? 0o700 : 0o600});
+    try {
+      const existing = await payload(target);
+      for (const [name, data] of values) if (!existing.get(name).equals(data)) throw new Error('Managed runtime version changed.');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      await mkdir(staging, {mode: 0o700});
+      for (const name of ['lib', 'bin']) await mkdir(path.join(staging, name), {mode: 0o700});
+      for (const [name, data] of values) await atomicPrivateWrite(path.join(staging, name), data, {anchor: runtimeDir, mode: ['run', 'bin/node'].includes(name) ? 0o700 : 0o600});
+      await rename(staging, target);
     }
-    try { await lstat(server); await verifyPayload(server); await rename(server, previous); hadPrevious = true; }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-    try { await rename(staging, server); published = true; }
-    catch (error) { if (hadPrevious) await rename(previous, server); throw error; }
-    if (hadPrevious) await rm(previous, {recursive: true});
-    return {runtimeDir, server, run: path.join(server, 'run')};
-  } finally { if (!published) await rm(staging, {recursive: true, force: true}); }
+    const server = path.join(runtimeDir, 'server'), link = path.join(runtimeDir, `.active-${randomUUID()}`);
+    let previous = null;
+    try {
+      const state = await lstat(server);
+      if (state.isSymbolicLink()) {
+        const resolved = await realpath(server);
+        if (path.dirname(resolved) !== versions || !/^[a-f0-9]{64}$/.test(path.basename(resolved))) throw new Error('Unsafe active bridge runtime.');
+        await payload(resolved);
+      } else {
+        await payload(server, {legacy: true});
+        previous = path.join(runtimeDir, `.legacy-${randomUUID()}`); await rename(server, previous);
+      }
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try { await symlink(path.join('versions', version), link); await rename(link, server); }
+    catch (error) { if (previous) await rename(previous, server); throw error; }
+    finally { await rm(link, {force: true}); }
+    if (previous) await rm(previous, {recursive: true});
+    return {runtimeDir, server, run: path.join(server, 'run'), version};
+  } finally { await rm(staging, {recursive: true, force: true}); }
 }
 
 export async function discoverCodex({environment = process.env, home = homedir(), applicationDirectories = ['/Applications', path.join(home, 'Applications')]} = {}) {
@@ -157,7 +180,8 @@ async function runCodex(command, args, {home, environment}) {
   });
 }
 
-export async function configureCodexDesktop({home = homedir(), environment = process.env, applicationDirectories} = {}) {
+export async function configureCodexDesktop({home = homedir(), environment = process.env, applicationDirectories, profile} = {}) {
+  const mcp = desktopMcp(profile);
   const configuredHome = environment.CODEX_HOME;
   if (configuredHome && (!path.isAbsolute(configuredHome) || configuredHome.includes('\0'))) throw new Error('CODEX_HOME must be an absolute, safe user-owned directory.');
   const directory = configuredHome ? path.resolve(configuredHome) : path.join(home, '.codex');
@@ -178,17 +202,18 @@ export async function configureCodexDesktop({home = homedir(), environment = pro
     await atomicPrivateWrite(backupPath, original, {anchor: directory});
     await chmod(configPath, 0o600);
   }
-  await runCodex(executable, ['mcp', 'add', 'kumo', '--', '/bin/sh', '-c', DESKTOP_MCP_COMMAND], {home, environment});
+  await runCodex(executable, ['mcp', 'add', 'kumo', '--', mcp.command, ...mcp.args], {home, environment});
   const configured = await readPrivateFile(configPath, {missing: false});
   if (!configured.length) throw new Error('Codex did not create its MCP configuration.');
   await chmod(configPath, 0o600);
   const status = JSON.parse(await runCodex(executable, ['mcp', 'get', 'kumo', '--json'], {home, environment}));
-  if (status.enabled === false || status.transport?.type !== 'stdio' || status.transport.command !== DESKTOP_MCP.command ||
-      JSON.stringify(status.transport.args) !== JSON.stringify(DESKTOP_MCP.args)) throw new Error('Codex did not retain the expected Kumo MCP command.');
+  if (status.enabled === false || status.transport?.type !== 'stdio' || status.transport.command !== mcp.command ||
+      JSON.stringify(status.transport.args) !== JSON.stringify(mcp.args)) throw new Error('Codex did not retain the expected Kumo MCP command.');
   return {provider: 'codex-desktop', configured: true, configPath, backupPath, restartRequired: true};
 }
 
-export async function configureClaudeDesktop({home = homedir()} = {}) {
+export async function configureClaudeDesktop({home = homedir(), profile} = {}) {
+  const mcp = desktopMcp(profile);
   const directory = path.join(home, 'Library', 'Application Support', 'Claude'); await privateDirectory(directory, {anchor: home});
   const configPath = path.join(directory, 'claude_desktop_config.json'), original = await readPrivateFile(configPath);
   let config = {};
@@ -197,7 +222,7 @@ export async function configureClaudeDesktop({home = homedir()} = {}) {
     if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Claude Desktop configuration must be an object.');
   }
   if (config.mcpServers !== undefined && (!config.mcpServers || typeof config.mcpServers !== 'object' || Array.isArray(config.mcpServers))) throw new Error('Claude Desktop mcpServers configuration must be an object.');
-  config.mcpServers = {...config.mcpServers, kumo: {command: DESKTOP_MCP.command, args: [...DESKTOP_MCP.args]}};
+  config.mcpServers = {...config.mcpServers, kumo: {command: mcp.command, args: [...mcp.args]}};
   const backupPath = await atomicPrivateWrite(configPath, JSON.stringify(config, null, 2) + '\n', {anchor: home, backup: original !== null, expected: original === null ? null : sha(original)});
   return {provider: 'claude-desktop', configured: true, configPath, backupPath, restartRequired: true};
 }
@@ -208,4 +233,28 @@ export async function configureDesktopProviders(provider, options = {}) {
   if (provider !== 'claude-desktop') results.push(await configureCodexDesktop(options));
   if (provider !== 'codex-desktop') results.push(await configureClaudeDesktop(options));
   return results;
+}
+
+// Status inspects only the Kumo transport and never returns client settings,
+// account credentials, paths, tokens, CLI stdout or config contents to the UI.
+export async function desktopProviderStatus(provider, {home = homedir(), profile, environment = process.env, applicationDirectories} = {}) {
+  const expected = desktopMcp(profile);
+  if (!['codex-desktop', 'claude-desktop'].includes(provider)) throw new Error('Choose one desktop provider');
+  try {
+    let actual;
+    if (provider === 'codex-desktop') {
+      const executable = await discoverCodex({home, environment, applicationDirectories});
+      const result = JSON.parse(await runCodex(executable, ['mcp', 'get', 'kumo', '--json'], {home, environment}));
+      actual = result.enabled === false ? null : result.transport;
+    } else {
+      const file = path.join(home, 'Library/Application Support/Claude/claude_desktop_config.json');
+      const data = await readPrivateFile(file);
+      if (!data) return {provider, configured: false, connected: false, status: 'not-configured'};
+      const config = JSON.parse(data.toString('utf8'));
+      if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Invalid settings');
+      actual = config.mcpServers?.kumo;
+    }
+    const configured = actual?.command === expected.command && JSON.stringify(actual?.args) === JSON.stringify(expected.args);
+    return {provider, configured, connected: false, status: configured ? 'configured' : 'not-configured'};
+  } catch { return {provider, configured: false, connected: false, status: 'needs-attention'}; }
 }

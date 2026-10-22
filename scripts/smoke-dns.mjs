@@ -5,13 +5,16 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {nativeQAApp, nativeQAEnvironment} from './native-browser-qa.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const {executable, verifyUnchanged} = await nativeQAApp();
 const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
 const temporary = await mkdtemp(path.join(tmpdir(), 'kumo-dns-qa-'));
+const environment = await nativeQAEnvironment(temporary);
 const template = 'https://dns.quad9.net/dns-query';
 let context;
 const launch = () => chromium.launchPersistentContext(path.join(temporary, 'profile'), {
-  executablePath: path.join(root, 'dist/Kumo.app/Contents/MacOS/Chromium'),
+  executablePath: executable, env: environment,
   headless: true, chromiumSandbox: true, timeout: 90000,
   args: ['--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain'],
 });
@@ -59,6 +62,9 @@ try {
     mode: persisted.mode, dnsProbeSucceeded: probeSucceeded, restartPersisted: true,
     scope: 'DNS configuration and Chromium resolver probe, not URL/download reputation'}, null, 2));
 } finally {
-  await context?.close();
-  await rm(temporary, {recursive: true, force: true});
+  try { await context?.close(); }
+  finally {
+    try { await rm(temporary, {recursive: true, force: true}); }
+    finally { await verifyUnchanged(); }
+  }
 }

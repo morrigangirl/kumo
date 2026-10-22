@@ -3,14 +3,19 @@ import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {nativeQAApp, nativeQAEnvironment} from './native-browser-qa.mjs';
+import assert from 'node:assert/strict';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const {executable, verifyUnchanged} = await nativeQAApp();
+assert(process.env.KUMO_NETWORK_QA_OUTPUT, 'Set KUMO_NETWORK_QA_OUTPUT to a new result JSON file.');
 const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
 const temp = await mkdtemp(path.join(tmpdir(), 'kumo-tls-'));
+const environment = await nativeQAEnvironment(temp);
 let context;
 try {
-  context = await chromium.launchPersistentContext(temp, {
-    executablePath: path.join(root, 'dist/Kumo.app/Contents/MacOS/Chromium'),
-    headless: true, chromiumSandbox: true, args: ['--no-first-run', '--disable-sync', ...(process.argv.includes('--tcp') ? ['--disable-quic'] : [])]
+  context = await chromium.launchPersistentContext(path.join(temp, 'profile'), {
+    executablePath: executable, env: environment,
+    headless: true, chromiumSandbox: true, args: ['--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain', '--password-store=basic', ...(process.argv.includes('--tcp') ? ['--disable-quic'] : [])]
   });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
@@ -29,6 +34,12 @@ try {
     else throw error;
   }
   if (!result.invalidCertificateRejected) throw new Error('Expired certificate was not rejected.');
-  await writeFile(path.join(root, 'dist/network-check.json'), JSON.stringify(result, null, 2) + '\n');
+  await writeFile(path.resolve(process.env.KUMO_NETWORK_QA_OUTPUT), JSON.stringify(result, null, 2) + '\n', {flag: 'wx', mode: 0o600});
   console.log(JSON.stringify(result, null, 2));
-} finally { await context?.close(); await rm(temp, {recursive: true, force: true}); }
+} finally {
+  try { await context?.close(); }
+  finally {
+    try { await rm(temp, {recursive: true, force: true}); }
+    finally { await verifyUnchanged(); }
+  }
+}

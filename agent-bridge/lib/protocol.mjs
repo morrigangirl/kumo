@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 
 export const MAX_MESSAGE_BYTES = 1024 * 1024;
 
-// Native Messaging uses a 32-bit little-endian length, unlike MCP's JSON lines.
+// The browser-owned private pipe uses a 32-bit little-endian length. MCP uses JSON lines.
 export function nativeMessage(value) {
   const body = Buffer.from(JSON.stringify(value));
   if (body.length > MAX_MESSAGE_BYTES) throw new Error('Message exceeds 1 MiB');
@@ -92,11 +92,12 @@ export function validateCommand(action, params = {}) {
 
 export function validateState(state) {
   if (!state || typeof state.enabled !== 'boolean' || typeof state.allowNewTabs !== 'boolean' || !Array.isArray(state.grants) || state.grants.length > 1000) {
-    throw new Error('Invalid extension permission state');
+    throw new Error('Invalid browser permission state');
   }
   const grants = new Map();
   for (const grant of state.grants) {
     if (!Number.isSafeInteger(grant.tabId) || grant.tabId < 0 || httpOrigin(grant.origin) !== grant.origin) throw new Error('Invalid tab grant');
+    if (grants.has(grant.tabId)) throw new Error('Duplicate tab grant');
     grants.set(grant.tabId, grant.origin);
   }
   return { enabled: state.enabled, allowNewTabs: state.allowNewTabs, grants };

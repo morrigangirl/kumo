@@ -90,6 +90,10 @@ def archive_name(config):
     return f'Kumo-{config["version"]}-{config["build"]}-macos-arm64.zip'
 
 
+def installer_name(config):
+    return f'Kumo-{config["version"]}-{config["build"]}-macos-arm64.pkg'
+
+
 def asset_url(config, filename):
     if Path(filename).name != filename or not re.fullmatch(r"[A-Za-z0-9._-]+", filename):
         raise RuntimeError("Invalid release asset name.")
@@ -126,6 +130,34 @@ def validate_public_model_scope(build):
     _PHISHLANG_POLICY["validate_public_model_scope"](build, ROOT)
 
 
+def validate_native_browser(app, build):
+    """Require the browser-owned implementation and its self-contained runtime."""
+    native = build.get("nativeIntegration", {})
+    runtime = build.get("agentRuntime", {})
+    if (not isinstance(native, dict) or native.get("included") is not True
+            or native.get("extensionRequired") is not False
+            or native.get("settingsURL") != "chrome://settings/kumo"
+            or not isinstance(runtime, dict) or runtime.get("included") is not True
+            or runtime.get("jitless") is not True):
+        raise RuntimeError("Release requires browser-native Settings and the bundled JIT-free agent runtime.")
+    resources = app / "Contents/Resources"
+    for name in ("KumoExtension", "native-host-template.json", "phishing-host-template.json", "malware-host-template.json", "setup-agent"):
+        path = resources / name
+        if path.exists() or path.is_symlink():
+            raise RuntimeError("A native Kumo release cannot contain the retired product extension or its registrations.")
+    lock = json.loads((ROOT / "config/node-runtime-lock.json").read_bytes())
+    if runtime.get("version") != lock["version"]:
+        raise RuntimeError("The packaged agent runtime version differs from its pinned release.")
+    for name in ("bin/node", "LICENSE.node", "runtime.json", "cli.mjs", "desktop.mjs", "run"):
+        path = resources / "agent-bridge" / name
+        if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+            raise RuntimeError("The packaged native agent runtime must be complete, regular files.")
+    # Signing changes the executable's bytes. The original vendor hashes remain
+    # provenance; the final executable is verified by the app's code signature.
+    if json.loads((resources / "agent-bridge/runtime.json").read_bytes()) != lock:
+        raise RuntimeError("The bundled agent runtime manifest differs from its pinned release.")
+
+
 def app_metadata(app, config, production=False):
     if app.name != "Kumo.app" or not app.is_dir() or app.is_symlink():
         raise RuntimeError("The release input must be a real Kumo.app directory.")
@@ -145,9 +177,10 @@ def app_metadata(app, config, production=False):
     if not isinstance(minimum, str) or not re.fullmatch(r"[1-9][0-9]*\.[0-9]+(?:\.[0-9]+)?", minimum):
         raise RuntimeError("App has no supported minimum macOS version.")
     minimum = minimum if minimum.count(".") == 2 else minimum + ".0"
-    build = json.loads((app / "Contents/Resources/KumoExtension/build-info.json").read_text())
+    build = json.loads((app / "Contents/Resources/kumo-build-info.json").read_text())
     if not isinstance(build, dict) or build.get("sourceCompiledLocally") is not True or not isinstance(build.get("sourceBuildReceipt"), dict):
         raise RuntimeError("Releases require the completed local Chromium source-build receipt.")
+    validate_native_browser(app, build)
     if production:
         validate_public_model_scope(build)
     receipt_api = runpy.run_path(str(ROOT / "scripts/build_receipt.py"))
@@ -252,7 +285,7 @@ def prepare(args, config):
     commit = git_commit()
     app = args.app.resolve()
     metadata = app_metadata(app, config)
-    validate_public_model_scope(json.loads((app / "Contents/Resources/KumoExtension/build-info.json").read_text()))
+    validate_public_model_scope(json.loads((app / "Contents/Resources/kumo-build-info.json").read_text()))
     signer = tools(config)
     notes_bytes = args.notes.read_bytes()
     if not notes_bytes or len(notes_bytes) > 65536:
@@ -307,11 +340,109 @@ def prepare(args, config):
     return {"prepared": True, "tag": release_tag(config), "output": str(output), "uploaded": False}
 
 
+def verify_installer(package, config, app):
+    """Authenticate actual package bytes and its app, never an adjacent receipt."""
+    package = Path(package)
+    before = package.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size < 2 * 1024 ** 3:
+        raise RuntimeError("The public installer must be a regular, singly linked file under 2 GiB.")
+    checksum = digest(package)
+    api = runpy.run_path(str(ROOT / "scripts/build-installer-pkg.py"))
+    identity = api["verify_public_package"](
+        package, config["version"], config["build"], app["codeDirectoryHash"])
+    after = package.lstat()
+    fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if any(getattr(before, key) != getattr(after, key) for key in fields) or digest(package) != checksum:
+        raise RuntimeError("The public installer changed during authentication.")
+    expected = {"appVersion": config["version"], "appBuild": config["build"],
+                "appCDHash": app["codeDirectoryHash"], "teamId": app["signingTeamId"],
+                "notarized": True}
+    if (not isinstance(identity, dict) or identity != expected
+            or type(identity.get("notarized")) is not bool):
+        raise RuntimeError("Installer identity differs from the verified archived browser.")
+    return identity
+
+
+def copy_regular_asset(source, destination):
+    # Open the reviewed bytes without following a replaced final symlink. The
+    # destination is private staging, and is authenticated again before publish.
+    descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(descriptor, "rb") as incoming:
+        state = os.fstat(incoming.fileno())
+        if not stat.S_ISREG(state.st_mode) or state.st_nlink != 1 or not 0 < state.st_size < 2 * 1024 ** 3:
+            raise RuntimeError("Release assets must be regular, singly linked files under 2 GiB.")
+        with destination.open("xb") as outgoing:
+            remaining = state.st_size
+            while remaining:
+                part = incoming.read(min(remaining, 1024 * 1024))
+                if not part:
+                    raise RuntimeError("A release input was truncated while being copied.")
+                outgoing.write(part)
+                remaining -= len(part)
+            if incoming.read(1):
+                raise RuntimeError("A release input grew while being copied.")
+        after = os.fstat(incoming.fileno())
+        if (state.st_size, state.st_mtime_ns, state.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise RuntimeError("A release input changed while it was being copied.")
+
+
+def with_installer(args, config):
+    """Add a verified public installer without changing the signed update/feed."""
+    directory = args.artifacts.resolve()
+    manifest = verify_assets(directory, config)
+    if "installer" in manifest:
+        raise RuntimeError("Installer attachment requires the original five-asset release directory.")
+    commit = git_commit()
+    if commit != manifest["commit"]:
+        raise RuntimeError("Installer attachment requires the clean original release checkout.")
+    output = args.output.absolute()
+    if output.exists() or output.is_symlink():
+        raise RuntimeError("Output already exists; release directories are never overwritten.")
+    if output.resolve().is_relative_to(directory):
+        raise RuntimeError("The completed release directory must be outside the original assets.")
+    original = {entry.name: digest(entry) for entry in directory.iterdir()}
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".kumo-installer-release-", dir=output.parent) as temporary:
+        staged = Path(temporary) / "assets"
+        staged.mkdir(mode=0o700)
+        for name in sorted(original):
+            copy_regular_asset(directory / name, staged / name)
+            if digest(staged / name) != original[name]:
+                raise RuntimeError("A base release asset changed during installer attachment.")
+        package = staged / installer_name(config)
+        copy_regular_asset(args.installer, package)
+        identity = verify_installer(package, config, manifest["app"])
+        manifest["installer"] = {"name": package.name, "url": asset_url(config, package.name),
+                                 "length": package.stat().st_size, "sha256": digest(package), **identity}
+        (staged / "release.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        names = sorted(entry.name for entry in staged.iterdir() if entry.name != "SHA256SUMS")
+        (staged / "SHA256SUMS").write_text("".join(f"{digest(staged / name)}  {name}\n" for name in names))
+        # Re-extract the actual update archive and compare the authenticated PKG
+        # browser against that application, not only manifest declarations.
+        verify_assets(staged, config)
+        if git_commit() != commit or {entry.name: digest(entry) for entry in directory.iterdir()} != original:
+            raise RuntimeError("Reviewed source or original assets changed during installer attachment.")
+        publish_directory(staged, output)
+    return {"prepared": True, "installerIncluded": True, "tag": release_tag(config),
+            "output": str(output), "uploaded": False}
+
+
 def verify_assets(directory, config, signer=None):
     directory = directory.resolve()
     expected = {archive_name(config), "appcast.xml", "release.json", "release-notes.md", "SHA256SUMS"}
+    manifest_path = directory / "release.json"
+    state = manifest_path.lstat()
+    if not stat.S_ISREG(state.st_mode) or state.st_nlink != 1 or state.st_size > 65536:
+        raise RuntimeError("Release manifest must be a bounded regular file without links.")
+    manifest = json.loads(manifest_path.read_text())
+    if not isinstance(manifest, dict):
+        raise RuntimeError("Release manifest must be a dictionary.")
+    if "installer" in manifest:
+        if not isinstance(manifest["installer"], dict):
+            raise RuntimeError("Installer metadata must be a dictionary.")
+        expected.add(installer_name(config))
     if {entry.name for entry in directory.iterdir()} != expected:
-        raise RuntimeError("Release directory must contain exactly the five expected assets.")
+        raise RuntimeError("Release directory must contain exactly the five or six declared assets.")
     for name in expected:
         entry = directory / name
         metadata = entry.lstat()
@@ -319,9 +450,6 @@ def verify_assets(directory, config, signer=None):
             raise RuntimeError("Release assets must be regular files without symlinks or hard links.")
     if (directory / "release.json").stat().st_size > 65536 or (directory / "appcast.xml").stat().st_size > 131072:
         raise RuntimeError("Release metadata exceeds its size limit.")
-    manifest = json.loads((directory / "release.json").read_text())
-    if not isinstance(manifest, dict):
-        raise RuntimeError("Release manifest must be a dictionary.")
     for key, value in {"schemaVersion": 1, "repository": REPOSITORY, "tag": release_tag(config),
                        "version": config["version"], "build": config["build"], "feedURL": FEED_URL,
                        "publicEDKey": config["publicEDKey"]}.items():
@@ -372,6 +500,15 @@ def verify_assets(directory, config, signer=None):
         metadata["notarized"] = True
         if metadata != manifest.get("app"):
             raise RuntimeError("Archived app identity, source receipt or notarization metadata changed.")
+        if "installer" in manifest:
+            package = directory / installer_name(config)
+            record = manifest["installer"]
+            identity = verify_installer(package, config, metadata)
+            expected_installer = {"name": package.name, "url": asset_url(config, package.name),
+                                  "length": package.stat().st_size, "sha256": digest(package), **identity}
+            if (type(record.get("length")) is not int or not 0 < package.stat().st_size < 2 * 1024 ** 3
+                    or record != expected_installer or type(record.get("notarized")) is not bool):
+                raise RuntimeError("Installer metadata, length, checksum or browser identity changed.")
     return manifest
 
 
@@ -405,6 +542,8 @@ def remote_tag_commit(config):
 def upload(args, config):
     directory = args.artifacts.resolve()
     manifest = verify_assets(directory, config)
+    if tuple(map(int, config["version"].split("."))) >= (0, 2, 0) and "installer" not in manifest:
+        raise RuntimeError("Native Kumo 0.2 and later releases require the complete notarized Apple installer.")
     if git_commit() != manifest["commit"]:
         raise RuntimeError("Upload must use the clean checkout from which these assets were prepared.")
     tag = release_tag(config)
@@ -472,6 +611,10 @@ def main():
                                 help="Keychain file containing the saved notary profile")
     verify_parser = commands.add_parser("verify", help="Verify release assets and archived Developer ID/notarized app locally")
     verify_parser.add_argument("--artifacts", type=Path, required=True)
+    installer_parser = commands.add_parser("with-installer", help="Attach a notarized complete installer to five verified update assets; upload nothing")
+    installer_parser.add_argument("--artifacts", type=Path, required=True)
+    installer_parser.add_argument("--installer", type=Path, required=True)
+    installer_parser.add_argument("--output", type=Path, required=True)
     upload_parser = commands.add_parser("upload", help="Upload verified assets to a GitHub draft; --publish also makes it public/latest")
     upload_parser.add_argument("--artifacts", type=Path, required=True)
     upload_parser.add_argument("--publish", action="store_true")
@@ -483,7 +626,7 @@ def main():
             blockers.append("The public Sparkle signing key has not been configured.")
         if not (ROOT / "build/sparkle/bin/sign_update").is_file():
             blockers.append("Prepare the pinned official Sparkle distribution first.")
-        build_path = args.app / "Contents/Resources/KumoExtension/build-info.json"
+        build_path = args.app / "Contents/Resources/kumo-build-info.json"
         if build_path.is_file():
             try:
                 validate_public_model_scope(json.loads(build_path.read_text()))
@@ -496,8 +639,14 @@ def main():
         return 0
     if sys.platform != "darwin":
         parser.error("Production release verification and publishing require macOS.")
-    result = prepare(args, config) if args.command == "prepare" else upload(args, config) if args.command == "upload" else {
-        "verified": True, "tag": verify_assets(args.artifacts, config)["tag"], "uploadsPerformed": False}
+    if args.command == "prepare":
+        result = prepare(args, config)
+    elif args.command == "with-installer":
+        result = with_installer(args, config)
+    elif args.command == "upload":
+        result = upload(args, config)
+    else:
+        result = {"verified": True, "tag": verify_assets(args.artifacts, config)["tag"], "uploadsPerformed": False}
     print(json.dumps(result, indent=2))
     return 0
 

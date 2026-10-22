@@ -11,8 +11,8 @@ import plistlib
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stdout
-from unittest.mock import patch
+from contextlib import contextmanager, redirect_stdout
+from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
 
 SCRIPT = Path(__file__).with_name("github-release.py")
@@ -153,7 +153,7 @@ class ReleasePolicy(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             app = directory / "Kumo.app"
-            metadata = app / "Contents/Resources/KumoExtension/build-info.json"
+            metadata = app / "Contents/Resources/kumo-build-info.json"
             metadata.parent.mkdir(parents=True)
             metadata.write_text("{}")
             notes = directory / "notes.md"
@@ -205,7 +205,7 @@ class ReleasePolicy(unittest.TestCase):
         from argparse import Namespace
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / "Kumo.app"
-            metadata = app / "Contents/Resources/KumoExtension/build-info.json"
+            metadata = app / "Contents/Resources/kumo-build-info.json"
             metadata.parent.mkdir(parents=True)
             metadata.write_text(json.dumps({"phishingProtection": {"included": True, "localDevelopmentOnly": True}}))
             with patch.object(release.sys, "platform", "darwin"), \
@@ -220,7 +220,7 @@ class ReleasePolicy(unittest.TestCase):
     def test_doctor_reports_bundled_development_only_model_without_signing(self):
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / "Kumo.app"
-            metadata = app / "Contents/Resources/KumoExtension/build-info.json"
+            metadata = app / "Contents/Resources/kumo-build-info.json"
             metadata.parent.mkdir(parents=True)
             metadata.write_text(json.dumps({"phishingProtection": {"included": True, "localDevelopmentOnly": True}}))
             output = io.StringIO()
@@ -270,7 +270,7 @@ class ArchivedAppPolicy(unittest.TestCase):
         config = configuration()
         app = Path(directory) / "Kumo.app"
         resources = app / "Contents/Resources"
-        (resources / "KumoExtension").mkdir(parents=True)
+        resources.mkdir(parents=True)
         info = {"CFBundleIdentifier": "app.kumo.browser", "CFBundleExecutable": "Kumo",
                 "CFBundleShortVersionString": config["version"], "CFBundleVersion": config["build"],
                 "SUFeedURL": config["feedURL"], "SUPublicEDKey": config["publicEDKey"],
@@ -281,8 +281,37 @@ class ArchivedAppPolicy(unittest.TestCase):
         (resources / "kumo-update-config.json").write_text(json.dumps({**config, "enabled": True}))
         build = {"sourceCompiledLocally": True, "sourceBuildReceipt": {"receiptSha256": "c" * 64},
                  "engineVersion": "155.0.8059.84", "appUpdates": {"ready": True}}
-        (resources / "KumoExtension/build-info.json").write_text(json.dumps(build))
+        lock = json.loads((release.ROOT / "config/node-runtime-lock.json").read_bytes())
+        build["nativeIntegration"] = {"included": True, "extensionRequired": False, "settingsURL": "chrome://settings/kumo"}
+        build["agentRuntime"] = {"included": True, "jitless": True, "version": lock["version"]}
+        for name in ("bin/node", "LICENSE.node", "runtime.json", "cli.mjs", "desktop.mjs", "run"):
+            path = resources / "agent-bridge" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"synthetic regular payload")
+        (resources / "agent-bridge/runtime.json").write_text(json.dumps(lock))
+        (resources / "kumo-build-info.json").write_text(json.dumps(build))
         return app, info, build
+
+    def test_native_release_refuses_product_extension_and_host_templates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app, _, build = self.fixture(directory)
+            for name in ("KumoExtension", "native-host-template.json", "phishing-host-template.json", "malware-host-template.json", "setup-agent"):
+                path = app / "Contents/Resources" / name
+                path.write_bytes(b"retired integration")
+                with self.subTest(name=name), self.assertRaisesRegex(RuntimeError, "retired product extension"):
+                    release.validate_native_browser(app, build)
+                path.unlink()
+            release.validate_native_browser(app, build)
+
+    def test_native_release_requires_bundled_node_and_manifest_but_allows_signed_node_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app, _, build = self.fixture(directory)
+            node = app / "Contents/Resources/agent-bridge/bin/node"
+            node.write_bytes(b"different final signed executable bytes")
+            release.validate_native_browser(app, build)
+            node.unlink()
+            with self.assertRaisesRegex(RuntimeError, "complete, regular files"):
+                release.validate_native_browser(app, build)
 
     def receipt_api(self):
         return {"verify_embedded_receipt": lambda *args: None, "current_input_digest": lambda *args: "fixture"}
@@ -292,7 +321,7 @@ class ArchivedAppPolicy(unittest.TestCase):
             app, _, build = self.fixture(directory)
             self.assertEqual(release.app_metadata(app, configuration(), production=True)["minimumSystemVersion"], "13.0.0")
             build["appUpdates"]["ready"] = False
-            (app / "Contents/Resources/KumoExtension/build-info.json").write_text(json.dumps(build))
+            (app / "Contents/Resources/kumo-build-info.json").write_text(json.dumps(build))
             with self.assertRaisesRegex(RuntimeError, "production updater"):
                 release.app_metadata(app, configuration(), production=True)
             release.app_metadata(app, configuration(), production=False)
@@ -301,7 +330,7 @@ class ArchivedAppPolicy(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.object(release.runpy, "run_path", return_value=self.receipt_api()):
             app, _, build = self.fixture(directory)
             build["phishingProtection"] = {"included": True, "localDevelopmentOnly": True}
-            path = app / "Contents/Resources/KumoExtension/build-info.json"
+            path = app / "Contents/Resources/kumo-build-info.json"
             path.write_text(json.dumps(build))
             with self.assertRaisesRegex(RuntimeError, "localDevelopmentOnly=true"):
                 release.app_metadata(app, configuration(), production=True)
@@ -342,18 +371,23 @@ class ArchivedAppPolicy(unittest.TestCase):
 
 
 class GitHubPublicationBoundary(unittest.TestCase):
-    def exercise(self, present=(), corrupt_existing=False, corrupt_final=False, publish=False, tag_changes=False):
+    def exercise(self, present=(), corrupt_existing=False, corrupt_final=False, publish=False, tag_changes=False,
+                 installer=False, version=None):
         from argparse import Namespace
         config = configuration()
+        if version:
+            config["version"] = version
         commit = "a" * 40
         commands = []
         with tempfile.TemporaryDirectory() as directory:
             assets = Path(directory)
             for name in [release.archive_name(config), "appcast.xml", "release.json", "release-notes.md", "SHA256SUMS"]:
                 (assets / name).write_bytes(b"fixture " + name.encode() + b"\n")
+            if installer:
+                (assets / release.installer_name(config)).write_bytes(b"synthetic package fixture")
             existing = {"tag_name": release.release_tag(config), "draft": True} if present else None
             remote = {"isDraft": True, "isPrerelease": False, "tagName": release.release_tag(config),
-                      "name": "Kumo 0.1.0", "body": (assets / "release-notes.md").read_text(),
+                      "name": f'Kumo {config["version"]}', "body": (assets / "release-notes.md").read_text(),
                       "assets": [{"name": name} for name in present]}
 
             def runner(*args, **kwargs):
@@ -376,6 +410,8 @@ class GitHubPublicationBoundary(unittest.TestCase):
                 return b""
 
             manifest = {"commit": commit, "tag": release.release_tag(config)}
+            if installer:
+                manifest["installer"] = {"fixture": "verification mocked at publication transport boundary"}
             remote_commits = [commit, "b" * 40 if tag_changes else commit]
             with (patch.object(release, "verify_assets", return_value=manifest),
                   patch.object(release, "git_commit", return_value=commit),
@@ -420,6 +456,251 @@ class GitHubPublicationBoundary(unittest.TestCase):
                 commands, error = self.exercise(publish=True, **options)
                 self.assertIsInstance(error, RuntimeError)
                 self.assertFalse(any(command[:3] == ("gh", "release", "edit") for command in commands))
+
+
+    def test_native_release_without_installer_stops_before_any_github_or_git_operation(self):
+        from argparse import Namespace
+        config = {**configuration(), "version": "0.2.0"}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(release, "verify_assets", return_value={"commit": "a" * 40}), \
+                patch.object(release, "git_commit") as checkout, patch.object(release, "run") as runner:
+            with self.assertRaisesRegex(RuntimeError, "complete notarized Apple installer"):
+                release.upload(Namespace(artifacts=Path(directory), publish=True), config)
+            checkout.assert_not_called()
+            runner.assert_not_called()
+
+    def test_complete_native_release_uploads_and_download_verifies_all_six_before_publish(self):
+        commands, result = self.exercise(installer=True, version="0.2.0", publish=True)
+        self.assertTrue(result["published"])
+        upload = next(command for command in commands if command[:3] == ("gh", "release", "upload"))
+        self.assertEqual(sum(value.endswith(".pkg") for value in upload), 1)
+        self.assertEqual(sum(value.endswith(".zip") for value in upload), 1)
+        self.assertEqual(commands[-1][:3], ("gh", "release", "edit"))
+
+
+class CompleteInstallerAssets(unittest.TestCase):
+    commit = "a" * 40
+    cdhash = "b" * 40
+
+    def config(self):
+        return {**configuration(), "version": "0.2.0", "build": "202610210004"}
+
+    def metadata(self):
+        return {"bundleIdentifier": "app.kumo.browser", "signingTeamId": "PV65ZWXCWX",
+                "minimumSystemVersion": "13.0.0", "engineVersion": "156.0.8078.47",
+                "sourceBuildReceiptSha256": "c" * 64}
+
+    def identity(self):
+        config = self.config()
+        return {"appVersion": config["version"], "appBuild": config["build"],
+                "appCDHash": self.cdhash, "teamId": "PV65ZWXCWX", "notarized": True}
+
+    def checksums(self, assets):
+        names = sorted(path.name for path in assets.iterdir() if path.name != "SHA256SUMS")
+        (assets / "SHA256SUMS").write_text("".join(f"{release.digest(assets / name)}  {name}\n" for name in names))
+
+    def fixture(self, directory, installer=False):
+        config = self.config()
+        assets = Path(directory) / "base"
+        assets.mkdir()
+        archive = assets / release.archive_name(config)
+        archive.write_bytes(b"Synthetic signed ZIP; cryptographic boundary is independently mocked.\n")
+        notes = "Synthetic complete installer release notes.\n"
+        (assets / "release-notes.md").write_text(notes)
+        app = {**self.metadata(), "codeDirectoryHash": self.cdhash, "notarized": True}
+        (assets / "appcast.xml").write_bytes(release.appcast(config, app, archive.stat().st_size, SIGNATURE, notes))
+        manifest = {"schemaVersion": 1, "repository": release.REPOSITORY, "tag": release.release_tag(config),
+                    "version": config["version"], "build": config["build"], "feedURL": config["feedURL"],
+                    "publicEDKey": config["publicEDKey"], "commit": self.commit, "app": app,
+                    "archive": {"name": archive.name, "url": release.asset_url(config, archive.name),
+                                "length": archive.stat().st_size, "sha256": release.digest(archive), "edSignature": SIGNATURE},
+                    "appcast": {"name": "appcast.xml", "sha256": release.digest(assets / "appcast.xml")},
+                    "releaseNotes": {"name": "release-notes.md", "sha256": release.digest(assets / "release-notes.md")}}
+        if installer:
+            package = assets / release.installer_name(config)
+            package.write_bytes(b"Synthetic authenticated notarized complete package.\n")
+            manifest["installer"] = {"name": package.name, "url": release.asset_url(config, package.name),
+                                     "length": package.stat().st_size, "sha256": release.digest(package), **self.identity()}
+        (assets / "release.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        self.checksums(assets)
+        return assets
+
+    @contextmanager
+    def platform_verifiers(self):
+        # Filesystem layout, manifest/feed validation and all checksums are real.
+        # Only macOS/Sparkle authentication and extracted app inspection are
+        # mocked; signed PKG authentication has its own independent test suite.
+        with (patch.object(release, "tools", return_value=Path("synthetic-sign-update")),
+              patch.object(release, "run", return_value=b""),
+              patch.object(release, "app_metadata", side_effect=lambda *args, **kwargs: self.metadata()),
+              patch.object(release, "verify_developer_id", return_value=self.cdhash),
+              patch.object(release, "verify_installer", side_effect=lambda *args: self.identity()) as package):
+            yield package
+
+    def original_bytes(self, assets):
+        return {p.name: p.read_bytes() for p in assets.iterdir()}
+
+    def test_five_base_assets_and_exact_six_declared_assets_are_supported(self):
+        for included in [False, True]:
+            with self.subTest(included=included), tempfile.TemporaryDirectory() as directory, self.platform_verifiers() as verifier:
+                assets = self.fixture(directory, included)
+                manifest = release.verify_assets(assets, self.config())
+                self.assertEqual("installer" in manifest, included)
+                self.assertEqual(verifier.call_count, int(included))
+                if included:
+                    self.assertEqual(verifier.call_args.args[2]["codeDirectoryHash"], self.cdhash)
+
+    def test_extra_package_receipt_or_undeclared_package_is_rejected(self):
+        for extra in ["receipt.json", "installer.pkg-receipt.json", release.installer_name(self.config())]:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as directory, self.platform_verifiers():
+                assets = self.fixture(directory)
+                (assets / extra).write_bytes(b"An adjacent receipt is not authority.")
+                with self.assertRaisesRegex(RuntimeError, "exactly"):
+                    release.verify_assets(assets, self.config())
+
+    def test_missing_package_links_and_directory_are_rejected(self):
+        for mode in ["missing", "symlink", "hardlink", "directory"]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory, self.platform_verifiers():
+                assets = self.fixture(directory, True)
+                package = assets / release.installer_name(self.config())
+                data = package.read_bytes(); package.unlink()
+                if mode in ["symlink", "hardlink"]:
+                    target = Path(directory) / "outside.pkg"; target.write_bytes(data)
+                    if mode == "symlink": package.symlink_to(target)
+                    else: os.link(target, package)
+                elif mode == "directory": package.mkdir()
+                with self.assertRaises(RuntimeError):
+                    release.verify_assets(assets, self.config())
+
+    def test_package_byte_tampering_and_every_identity_field_are_bound(self):
+        fields = [("url", "https://example.invalid/installer.pkg"), ("name", "other.pkg"),
+                  ("length", True), ("sha256", "0" * 64), ("appVersion", "0.1.0"),
+                  ("appBuild", "1"), ("appCDHash", "d" * 40), ("teamId", "OTHERTEAM"),
+                  ("notarized", False), ("privatePath", "/private/should-not-be-public")]
+        for key, value in fields:
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory, self.platform_verifiers():
+                assets = self.fixture(directory, True)
+                manifest = json.loads((assets / "release.json").read_text())
+                manifest["installer"][key] = value
+                (assets / "release.json").write_text(json.dumps(manifest))
+                self.checksums(assets)
+                with self.assertRaisesRegex(RuntimeError, "Installer metadata"):
+                    release.verify_assets(assets, self.config())
+        with tempfile.TemporaryDirectory() as directory, self.platform_verifiers():
+            assets = self.fixture(directory, True)
+            with (assets / release.installer_name(self.config())).open("ab") as package: package.write(b"TAMPERED")
+            self.checksums(assets)
+            with self.assertRaisesRegex(RuntimeError, "Installer metadata"):
+                release.verify_assets(assets, self.config())
+
+    def test_package_verifier_receives_actual_archived_browser_cdhash_and_rejects_false_identity(self):
+        config = self.config(); app = {**self.metadata(), "codeDirectoryHash": self.cdhash}
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / "synthetic.pkg"; package.write_bytes(b"Synthetic signed package")
+            for wrong in [{**self.identity(), "appCDHash": "d" * 40}, {**self.identity(), "notarized": 1},
+                          {**self.identity(), "path": "/private/receipt"}, {**self.identity(), "teamId": "OTHERTEAM"}]:
+                with self.subTest(wrong=wrong), patch.object(release.runpy, "run_path", return_value={"verify_public_package": lambda *args: wrong}):
+                    with self.assertRaisesRegex(RuntimeError, "Installer identity"):
+                        release.verify_installer(package, config, app)
+            authenticate = Mock(return_value=self.identity())
+            with patch.object(release.runpy, "run_path", return_value={"verify_public_package": authenticate}) as loader:
+                self.assertEqual(release.verify_installer(package, config, app), self.identity())
+                self.assertEqual(loader.call_args.args, (str(release.ROOT / "scripts/build-installer-pkg.py"),))
+                authenticate.assert_called_once_with(package, config["version"], config["build"], self.cdhash)
+
+    def test_package_changes_during_authentication_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / "synthetic.pkg"; package.write_bytes(b"Synthetic package")
+            def authenticate(*args):
+                package.write_bytes(b"Different bytes after authenticated snapshot")
+                return self.identity()
+            with patch.object(release.runpy, "run_path", return_value={"verify_public_package": authenticate}):
+                with self.assertRaisesRegex(RuntimeError, "changed during authentication"):
+                    release.verify_installer(package, self.config(), {**self.metadata(), "codeDirectoryHash": self.cdhash})
+
+    def test_manifest_cannot_substitute_a_different_browser_identity_before_package_verification(self):
+        with tempfile.TemporaryDirectory() as directory, self.platform_verifiers() as package:
+            assets = self.fixture(directory, True)
+            manifest = json.loads((assets / "release.json").read_text())
+            manifest["app"]["codeDirectoryHash"] = "d" * 40
+            manifest["installer"]["appCDHash"] = "d" * 40
+            (assets / "release.json").write_text(json.dumps(manifest)); self.checksums(assets)
+            with self.assertRaisesRegex(RuntimeError, "Archived app identity"):
+                release.verify_assets(assets, self.config())
+            package.assert_not_called()
+
+    def test_with_installer_preserves_original_five_and_zip_feed_bytes(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as directory, self.platform_verifiers(), patch.object(release, "git_commit", return_value=self.commit):
+            directory = Path(directory); assets = self.fixture(directory); before = self.original_bytes(assets)
+            package = directory / "input.pkg"; package.write_bytes(b"Synthetic independently authenticated package")
+            output = directory / "complete"
+            result = release.with_installer(Namespace(artifacts=assets, installer=package, output=output), self.config())
+            self.assertTrue(result["installerIncluded"]); self.assertFalse(result["uploaded"])
+            self.assertEqual(self.original_bytes(assets), before)
+            self.assertEqual(len(list(output.iterdir())), 6)
+            for name in [release.archive_name(self.config()), "appcast.xml", "release-notes.md"]:
+                self.assertEqual((output / name).read_bytes(), before[name])
+            self.assertEqual((output / release.installer_name(self.config())).read_bytes(), package.read_bytes())
+            release.verify_assets(output, self.config())
+
+    def test_failed_authentication_or_atomic_publish_leaves_original_and_no_partial_output(self):
+        from argparse import Namespace
+        for failure in ["authentication", "publish", "changed-checkout"]:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory, self.platform_verifiers():
+                directory = Path(directory); assets = self.fixture(directory); before = self.original_bytes(assets)
+                package = directory / "input.pkg"; package.write_bytes(b"Synthetic package")
+                output = directory / "complete"; args = Namespace(artifacts=assets, installer=package, output=output)
+                with patch.object(release, "git_commit", side_effect=[self.commit, "d" * 40] if failure == "changed-checkout" else lambda:self.commit):
+                    if failure == "authentication":
+                        context = patch.object(release, "verify_installer", side_effect=RuntimeError("Package authentication failed"))
+                    elif failure == "publish":
+                        context = patch.object(release, "publish_directory", side_effect=RuntimeError("Exclusive publish failed"))
+                    else:
+                        context = patch.object(release, "publish_directory", wraps=release.publish_directory)
+                    with context, self.assertRaises(RuntimeError): release.with_installer(args, self.config())
+                self.assertEqual(self.original_bytes(assets), before); self.assertFalse(output.exists())
+                self.assertFalse(any(p.name.startswith(".kumo-installer-release-") for p in directory.iterdir()))
+
+    def test_preexisting_output_wrong_checkout_and_nested_output_are_rejected(self):
+        from argparse import Namespace
+        for mode in ["existing", "wrong-checkout", "nested"]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory, self.platform_verifiers():
+                directory = Path(directory); assets = self.fixture(directory); before = self.original_bytes(assets)
+                output = assets / "nested" if mode == "nested" else directory / "complete"
+                if mode == "existing": output.mkdir(); (output / "keep").write_bytes(b"Do not replace")
+                with patch.object(release, "git_commit", return_value="d" * 40 if mode == "wrong-checkout" else self.commit), self.assertRaises(RuntimeError):
+                    release.with_installer(Namespace(artifacts=assets, installer=directory / "never-read.pkg", output=output), self.config())
+                self.assertEqual(self.original_bytes(assets), before)
+                if mode == "existing": self.assertEqual((output / "keep").read_bytes(), b"Do not replace")
+
+    def test_nonregular_linked_empty_and_oversized_package_inputs_are_rejected_without_copying(self):
+        for mode in ["symlink", "hardlink", "fifo", "empty", "oversized"]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                directory = Path(directory); source = directory / "input.pkg"; output = directory / "copy.pkg"
+                if mode in ["symlink", "hardlink"]:
+                    target = directory / "target.pkg"; target.write_bytes(b"Leave target unchanged")
+                    if mode == "symlink": source.symlink_to(target)
+                    else: os.link(target, source)
+                elif mode == "fifo": os.mkfifo(source, 0o600)
+                else:
+                    source.write_bytes(b"")
+                    if mode == "oversized":
+                        with source.open("r+b") as stream: stream.truncate(2 * 1024 ** 3)
+                with self.assertRaises((RuntimeError, OSError)): release.copy_regular_asset(source, output)
+                self.assertFalse(output.exists())
+
+    def test_with_installer_cli_dispatches_only_local_adapter(self):
+        output = io.StringIO()
+        with (patch.object(release.sys, "argv", [str(SCRIPT), "with-installer", "--artifacts", "base", "--installer", "signed.pkg", "--output", "complete"]),
+              patch.object(release.sys, "platform", "darwin"),
+              patch.object(release, "load_config", return_value=self.config()),
+              patch.object(release, "with_installer", return_value={"prepared": True, "uploaded": False}) as adapter,
+              patch.object(release, "run") as runner, redirect_stdout(output)):
+            self.assertEqual(release.main(), 0)
+            args = adapter.call_args.args[0]
+            self.assertEqual((args.artifacts,args.installer,args.output), (Path("base"),Path("signed.pkg"),Path("complete")))
+            runner.assert_not_called()
 
 
 class WorkflowSyntax(unittest.TestCase):

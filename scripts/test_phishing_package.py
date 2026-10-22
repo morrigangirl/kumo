@@ -317,19 +317,16 @@ class PhishingStartupProbe(unittest.TestCase):
         write_json(resources / "model-info.json", {"modelVersion": self.version})
         self.reply = {"id": "package-probe", "ok": True, "available": True, "modelVersion": self.version,
                       "probability": 0.02, "windows": 1, "tokenCount": 8}
-        self.identity = patch.object(PACKAGE, "extension_id", return_value="exampleextensionid")
-        self.identity.start()
-        self.addCleanup(self.identity.stop)
 
     def result(self, reply=None):
         body = json.dumps(self.reply if reply is None else reply).encode()
         return Mock(returncode=0, stdout=struct.pack("<I", len(body)) + body, stderr=b"")
 
-    def test_real_native_messaging_command_is_probed_with_public_synthetic_text(self):
+    def test_real_browser_stdio_command_is_probed_with_public_synthetic_text(self):
         with patch.object(PACKAGE.subprocess, "run", return_value=self.result()) as command:
             PACKAGE.verify_phishing_start(self.destination)
         args, kwargs = command.call_args
-        self.assertEqual(args[0], [str(self.destination / "Contents/Helpers/KumoPhishing.app/Contents/MacOS/KumoPhishingHost"), "chrome-extension://exampleextensionid/"])
+        self.assertEqual(args[0], [str(self.destination / "Contents/Helpers/KumoPhishing.app/Contents/MacOS/KumoPhishingHost"), "--browser-stdio"])
         frame = kwargs["input"]
         length = struct.unpack("<I", frame[:4])[0]
         self.assertEqual(len(frame), length + 4)
@@ -388,11 +385,12 @@ class PhishingStartupProbe(unittest.TestCase):
         failed.returncode = 1
         with patch.object(PACKAGE, "ensure_app_closed"), \
                 patch.object(PACKAGE, "ensure_no_engine_downgrade"), \
+                patch.object(PACKAGE, "incoming_engine_version", return_value="156.0.8078.47"), \
                 patch.object(PACKAGE, "assemble", side_effect=failing_assembly), \
                 patch.object(PACKAGE.subprocess, "run", return_value=failed), \
                 patch.object(PACKAGE, "publish_preview") as publish, \
                 self.assertRaises(RuntimeError):
-            PACKAGE.package(Path("unused-engine"), self.destination, False)
+            PACKAGE.package(Path("unused-engine"), self.destination, True)
         publish.assert_not_called()
         self.assertEqual(sentinel.read_text(), "previous working application")
 

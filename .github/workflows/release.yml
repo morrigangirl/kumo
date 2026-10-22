@@ -32,7 +32,10 @@ jobs:
         shell: bash --noprofile --norc -euo pipefail {0}
     env:
       KUMO_NOTARY_PROFILE: ${{ vars.KUMO_NOTARY_PROFILE }}
+      KUMO_NOTARY_KEYCHAIN: ${{ vars.KUMO_NOTARY_KEYCHAIN }}
       KUMO_DEVELOPER_ID_SHA1: ${{ vars.KUMO_DEVELOPER_ID_SHA1 }}
+      KUMO_INSTALLER_IDENTITY: ${{ vars.KUMO_INSTALLER_IDENTITY }}
+      KUMO_CLAMAV_DATABASE: ${{ vars.KUMO_CLAMAV_DATABASE }}
       KUMO_PASSKEY_PROFILE: ${{ vars.KUMO_PASSKEY_PROFILE }}
     steps:
       - name: Check out the exact reviewed commit
@@ -47,7 +50,17 @@ jobs:
       - name: Validate release runner and committed configuration
         run: |
           test -n "$KUMO_NOTARY_PROFILE"
+          if [[ -n "$KUMO_NOTARY_KEYCHAIN" ]]; then
+            test -f "$KUMO_NOTARY_KEYCHAIN"
+          fi
           test -n "$KUMO_DEVELOPER_ID_SHA1"
+          test -n "$KUMO_INSTALLER_IDENTITY"
+          test -d "$KUMO_CLAMAV_DATABASE"
+          test -f build/installer-inputs/clamav-1.5.4.tar.gz
+          test -d build/installer-inputs/notices
+          test -f build/clamav-downloads/clamav-1.5.4.macos.universal.pkg
+          test -x /usr/local/clamav/bin/sigtool
+          test -d /usr/local/clamav/etc/certs
           test "$(uname -m)" = arm64
           command -v gh >/dev/null
           command -v node >/dev/null
@@ -67,7 +80,10 @@ jobs:
               raise SystemExit("The pushed release tag must point to this exact workflow commit")
           with open(os.environ["GITHUB_ENV"], "a") as output:
               output.write("KUMO_RELEASE_TAG=" + tag + "\n")
+              output.write("KUMO_RELEASE_ARCHIVE=" + api["archive_name"](config) + "\n")
+              output.write("KUMO_RELEASE_BASE_DIRECTORY=dist/github-release-base/" + tag + "\n")
               output.write("KUMO_RELEASE_DIRECTORY=dist/github-releases/" + tag + "\n")
+              output.write("KUMO_RELEASE_INSTALLER_DIRECTORY=dist/installer/" + tag + "\n")
               output.write("KUMO_RELEASE_NOTES=" + notes + "\n")
               output.write("KUMO_RELEASE_SOURCE_DIR=build/release-source-" + os.environ["GITHUB_SHA"] + "\n")
           PY
@@ -77,36 +93,91 @@ jobs:
           python3 scripts/prepare-release-vendor.py
           python3 scripts/source.py doctor
           python3 scripts/prepare-sparkle.py
+          if [[ -e build/agent-runtime || -L build/agent-runtime ]]; then
+            python3 scripts/prepare-agent-runtime.py --verify
+          else
+            python3 scripts/prepare-agent-runtime.py
+          fi
           python3 scripts/prepare-malware-feed.py
           /usr/bin/python3 scripts/prepare-phishlang.py
 
       - name: Run release regressions
         run: |
-          node --test tests/*.test.mjs agent-bridge/test/*.test.mjs
+          npm test
+          python3 -m unittest scripts.test_native_protection scripts.test_agent_pipe scripts.test_agent_process scripts.test_agent_runtime -v
+          python3 -m unittest scripts.test_installer_pkg scripts.test_installer_package -v
           python3 -m unittest scripts/test_github_release.py -v
           python3 -m unittest scripts/test_release_vendor.py -v
           python3 -m unittest scripts/test_phishlang_policy.py scripts/test_phishing_package.py -v
           swift test --package-path native/updater
           KUMO_PHISHING_REFERENCE_DIRECTORY="$PWD/build/phishlang-model" swift test --package-path native/phishing
+          xcrun swift test --package-path native/installer --scratch-path build/installer-native-ci-tests --jobs 1
 
       - name: Build the pinned Chromium source and package Kumo
         run: |
           scripts/build-source.sh build --work-dir "$KUMO_RELEASE_SOURCE_DIR"
+          KUMO_NATIVE_SOURCE="$KUMO_RELEASE_SOURCE_DIR/recipe/build/src"
+          PATH="$KUMO_NATIVE_SOURCE/third_party/llvm-build/Release+Asserts/bin:$PATH" \
+            ninja -C "$KUMO_NATIVE_SOURCE/out/Default" -j4 kumo_native_tests
+          "$KUMO_NATIVE_SOURCE/out/Default/kumo_native_tests" \
+            --test-launcher-jobs=1 --test-launcher-retry-limit=0
           python3 scripts/package.py \
             --engine-app "$KUMO_RELEASE_SOURCE_DIR/recipe/build/src/out/Default/Chromium.app"
+
+      - name: Qualify the freshly packaged native browser before notarization
+        run: |
+          npm install --prefix .cache/qa --no-save --package-lock=false --ignore-scripts playwright-core@1.64.1
+          KUMO_QA_APP="$PWD/dist/Kumo.app" \
+          KUMO_QA_OUTPUT="$PWD/build/native-runtime-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+          node scripts/smoke-native-browser.mjs --run
 
       - name: Sign, notarize, staple and prepare signed update assets
         run: |
           set -- python3 scripts/github-release.py prepare \
             --app dist/Kumo.app \
-            --output "$KUMO_RELEASE_DIRECTORY" \
+            --output "$KUMO_RELEASE_BASE_DIRECTORY" \
             --notes "$KUMO_RELEASE_NOTES" \
             --identity "$KUMO_DEVELOPER_ID_SHA1" \
             --notary-profile "$KUMO_NOTARY_PROFILE"
+          if [[ -n "$KUMO_NOTARY_KEYCHAIN" ]]; then
+            set -- "$@" --notary-keychain "$KUMO_NOTARY_KEYCHAIN"
+          fi
           if [[ -n "$KUMO_PASSKEY_PROFILE" ]]; then
             set -- "$@" --profile "$KUMO_PASSKEY_PROFILE"
           fi
           "$@"
+
+      - name: Build, sign and notarize the complete Apple installer
+        run: |
+          mkdir -p "$KUMO_RELEASE_INSTALLER_DIRECTORY"
+          ditto -x -k "$KUMO_RELEASE_BASE_DIRECTORY/$KUMO_RELEASE_ARCHIVE" "$KUMO_RELEASE_INSTALLER_DIRECTORY/browser"
+          xcrun swift build --package-path native/installer --scratch-path build/installer-native -c release --arch arm64 --jobs 1
+          KUMO_SETUP_BIN=$(xcrun swift build --package-path native/installer --scratch-path build/installer-native -c release --arch arm64 --jobs 1 --show-bin-path)
+          set -- python3 scripts/build-installer.py \
+            --app "$KUMO_RELEASE_INSTALLER_DIRECTORY/browser/Kumo.app" \
+            --definitions "$KUMO_CLAMAV_DATABASE" \
+            --executable "$KUMO_SETUP_BIN/KumoSetup" \
+            --output "$KUMO_RELEASE_INSTALLER_DIRECTORY/Kumo Setup.app" \
+            --sign --identity "$KUMO_DEVELOPER_ID_SHA1" \
+            --notary-profile "$KUMO_NOTARY_PROFILE"
+          if [[ -n "$KUMO_NOTARY_KEYCHAIN" ]]; then
+            set -- "$@" --notary-keychain "$KUMO_NOTARY_KEYCHAIN"
+          fi
+          "$@"
+          KUMO_STANDARD_PACKAGE="$KUMO_RELEASE_INSTALLER_DIRECTORY/Kumo.pkg"
+          set -- python3 scripts/build-installer-pkg.py \
+            --setup-app "$KUMO_RELEASE_INSTALLER_DIRECTORY/Kumo Setup.app" \
+            --output "$KUMO_STANDARD_PACKAGE" \
+            --identity "$KUMO_INSTALLER_IDENTITY" \
+            --notary-profile "$KUMO_NOTARY_PROFILE"
+          if [[ -n "$KUMO_NOTARY_KEYCHAIN" ]]; then
+            set -- "$@" --notary-keychain "$KUMO_NOTARY_KEYCHAIN"
+          fi
+          "$@"
+          python3 scripts/github-release.py with-installer \
+            --artifacts "$KUMO_RELEASE_BASE_DIRECTORY" \
+            --installer "$KUMO_STANDARD_PACKAGE" \
+            --output "$KUMO_RELEASE_DIRECTORY"
 
       - name: Upload verified draft and optionally publish
         env:

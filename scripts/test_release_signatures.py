@@ -2,6 +2,7 @@
 """Regression checks for codesign's inline requirement argument boundary."""
 import importlib.util
 import json
+import plistlib
 from pathlib import Path
 import sys
 import tempfile
@@ -114,6 +115,29 @@ class NotaryKeychainSelection(unittest.TestCase):
             self.assertEqual(submit[0][4:], ("--keychain-profile", "Synthetic Notary", "--keychain",
                                             str(keychain.resolve()), "--wait", "--output-format", "json"))
             self.assertTrue(all("--keychain" not in arguments for arguments in calls if arguments not in submit))
+
+
+class JitlessRuntimePolicy(unittest.TestCase):
+    def test_agent_node_never_inherits_browser_jit_or_library_exceptions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "Kumo.app"
+            node = app / "Contents/Resources/agent-bridge/bin/node"
+            engine = app / "Contents/MacOS/Chromium"
+            for path in (node, engine):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"\xcf\xfa\xed\xfe" + b"synthetic Mach-O fixture")
+            (app / "Contents/Info.plist").write_bytes(plistlib.dumps({
+                "CFBundleExecutable": "Kumo", "CFBundleIdentifier": "app.kumo.browser"}))
+            metadata = {"identifier": "inherited.fixture", "flags": SIGNER.RUNTIME,
+                        "entitlements": {"com.apple.security.cs.allow-jit": True,
+                                         "com.apple.security.cs.disable-library-validation": True}}
+            config = {"bundleIdentifier": "app.kumo.browser", "browserPasskeyEntitlement": "com.apple.developer.web-browser.public-key-credential"}
+            with patch.object(SIGNER, "signing_metadata", return_value=metadata):
+                items = SIGNER.inventory(app, config)
+            item = next(i for i in items if i.relative.endswith("agent-bridge/bin/node"))
+            self.assertEqual(item.identifier, "app.kumo.agent.runtime")
+            self.assertEqual(item.entitlements, {})
+            self.assertEqual(item.flags & SIGNER.MAIN_POLICY, SIGNER.MAIN_POLICY)
 
 
 if __name__ == "__main__":

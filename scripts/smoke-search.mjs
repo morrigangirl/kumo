@@ -10,9 +10,12 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createServer} from 'node:http';
+import {nativeQAApp, nativeQAEnvironment} from './native-browser-qa.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const {executable, verifyUnchanged} = await nativeQAApp();
 const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
 const temporary = await mkdtemp(path.join(tmpdir(), 'kumo-search-qa-'));
+const environment = await nativeQAEnvironment(temporary);
 const profile = path.join(temporary, 'profile');
 const engineName = 'Kumo Local QA';
 const requests = [];
@@ -24,7 +27,7 @@ const server = createServer((request, response) => {
 });
 let context;
 const launch = () => chromium.launchPersistentContext(profile, {
-  executablePath: path.join(root, 'dist/Kumo.app/Contents/MacOS/Chromium'),
+  executablePath: executable, env: environment,
   headless: true, chromiumSandbox: true, timeout: 90000,
   args: ['--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain'],
 });
@@ -75,7 +78,7 @@ try {
   let settings = await context.newPage();
   await settings.goto('chrome://settings/searchEngines');
   await settings.locator('settings-search-engines-page').waitFor({state: 'attached'});
-  assert.equal((await getSelected(settings)).name, 'No Search', 'Preview must retain its intentional fresh-profile default');
+  assert.equal((await getSelected(settings)).name, 'No Search', 'A fresh profile must retain its intentional default');
   await settings.locator('#addSearchEngine').click();
   const dialog = settings.locator('settings-search-engine-edit-dialog');
   await dialog.locator('#searchEngine input').fill(engineName);
@@ -107,7 +110,12 @@ try {
   assert.deepEqual(requests, ['kumo native search before restart', 'kumo native search after restart']);
   console.log(JSON.stringify({passed: true, freshDefault: 'No Search', selected: engineName, template, restartPersisted: true, nativeOmniboxMatches: [before, after], localRequests: requests}, null, 2));
 } finally {
-  await context?.close();
-  await new Promise(resolve => server.close(resolve));
-  await rm(temporary, {recursive: true, force: true});
+  try { await context?.close(); }
+  finally {
+    try { await new Promise(resolve => server.close(resolve)); }
+    finally {
+      try { await rm(temporary, {recursive: true, force: true}); }
+      finally { await verifyUnchanged(); }
+    }
+  }
 }

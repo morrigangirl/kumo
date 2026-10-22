@@ -52,7 +52,7 @@ class DowngradeGuards(unittest.TestCase):
         PACKAGE.ensure_no_engine_downgrade(self.destination, "155.0.8059.85")
 
     def test_separate_output_does_not_inherit_other_output_version(self):
-        PACKAGE.ensure_no_engine_downgrade(self.destination.parent / "preview/Kumo.app", PACKAGE.VERSION)
+        PACKAGE.ensure_no_engine_downgrade(self.destination.parent / "preview/Kumo.app", "155.0.8059.39")
         self.verification.assert_not_called()
 
     def test_missing_or_malformed_installed_metadata_fails_closed(self):
@@ -67,9 +67,9 @@ class DowngradeGuards(unittest.TestCase):
             PACKAGE.ensure_no_engine_downgrade(self.destination, "155.0.8059.85")
 
     def test_rejection_happens_before_assembly(self):
-        with patch.object(PACKAGE, "ensure_app_closed"), patch.object(PACKAGE, "assemble") as assemble:
+        with patch.object(PACKAGE, "ensure_app_closed"), patch.object(PACKAGE, "incoming_engine_version", return_value="155.0.8059.39"), patch.object(PACKAGE, "assemble") as assemble:
             with self.assertRaisesRegex(RuntimeError, "Refusing Chromium engine downgrade"):
-                PACKAGE.package(Path("unused-preview-input"), self.destination, False)
+                PACKAGE.package(Path("unused-preview-input"), self.destination, True)
             assemble.assert_not_called()
 
     def test_newer_app_published_during_assembly_is_preserved(self):
@@ -77,13 +77,14 @@ class DowngradeGuards(unittest.TestCase):
 
         def assemble(*_arguments):
             self.write_version("155.0.8059.84")
-            return {"engineVersion": PACKAGE.VERSION}
+            return {"engineVersion": "155.0.8059.39"}
 
         with patch.object(PACKAGE, "ensure_app_closed"), \
+                patch.object(PACKAGE, "incoming_engine_version", return_value="155.0.8059.39"), \
                 patch.object(PACKAGE, "assemble", side_effect=assemble), \
                 patch.object(PACKAGE, "publish_preview") as publish:
             with self.assertRaisesRegex(RuntimeError, "Refusing Chromium engine downgrade"):
-                PACKAGE.package(Path("unused-preview-input"), self.destination, False)
+                PACKAGE.package(Path("unused-preview-input"), self.destination, True)
             publish.assert_not_called()
         self.assertEqual(plistlib.loads(self.info.read_bytes())["KumoEngineVersion"], "155.0.8059.84")
 
@@ -121,18 +122,39 @@ class AgentPayloadGuards(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "regular source files"):
             PACKAGE.copy_agent_runtime(self.destination, self.source)
 
-    def test_generated_extension_cache_cannot_enter_signed_resources(self):
-        (self.source / "_metadata").mkdir()
-        with self.assertRaisesRegex(RuntimeError, "Generated extension caches"):
-            PACKAGE.copy_extension_resources(self.destination, self.source)
-        self.assertFalse(self.destination.exists())
+    def test_upstream_binary_packaging_is_rejected_before_any_signing(self):
+        with patch.object(PACKAGE, "development_identity") as identity:
+            with self.assertRaisesRegex(RuntimeError, "completed local Chromium source build"):
+                PACKAGE.assemble(self.source, self.destination, False, self.destination)
+            identity.assert_not_called()
 
-    def test_extension_copy_excludes_local_environment_files(self):
-        (self.source / ".env.local").write_text("PRIVATE_QA_SENTINEL")
-        (self.source / "manifest.json").write_text('{"manifest_version":3}')
-        PACKAGE.copy_extension_resources(self.destination, self.source)
-        self.assertTrue((self.destination / "manifest.json").is_file())
-        self.assertFalse((self.destination / ".env.local").exists())
+    def test_nested_helper_names_are_branded_without_changing_executable(self):
+        import plistlib
+        target = self.destination / "Contents/Frameworks/Chromium Helper (Renderer).app/Contents/Info.plist"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(plistlib.dumps({"CFBundleExecutable": "Chromium Helper (Renderer)", "CFBundleDisplayName": "Chromium Helper (Renderer)", "CFBundleIdentifier": "app.kumo.browser.engine.helper.renderer"}))
+        PACKAGE.rebrand_helper_display_names(self.destination)
+        info = plistlib.loads(target.read_bytes())
+        self.assertEqual(info["CFBundleExecutable"], "Chromium Helper (Renderer)")
+        self.assertEqual(info["CFBundleName"], "Kumo Helper (Renderer)")
+        self.assertEqual(info["CFBundleDisplayName"], "Kumo Helper (Renderer)")
+        self.assertEqual(info["CFBundleIdentifier"], "app.kumo.browser.engine.helper.renderer")
+
+
+class NativeStartupIsolation(unittest.TestCase):
+    def test_native_broker_bootstrap_cannot_use_the_personal_home(self):
+        def probe(command, **options):
+            environment = options["env"]
+            temporary_home = Path(environment["HOME"])
+            self.assertTrue(temporary_home.is_dir())
+            self.assertEqual(environment["CFFIXED_USER_HOME"], str(temporary_home))
+            self.assertNotEqual(temporary_home, Path.home())
+            self.assertIn("--use-mock-keychain", command)
+            profile = Path(next(arg.split("=", 1)[1] for arg in command if arg.startswith("--user-data-dir=")))
+            self.assertEqual(temporary_home.parent, profile)
+            return Mock(returncode=0, stdout="<html></html>")
+        with patch.object(PACKAGE.subprocess, "run", side_effect=probe):
+            PACKAGE.verify_engine_start(Path("/synthetic/Kumo.app"))
 
 
 if __name__ == "__main__":

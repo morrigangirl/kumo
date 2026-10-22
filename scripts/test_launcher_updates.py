@@ -22,7 +22,7 @@ class LauncherUpdates(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix='kumo-launcher-updates-', dir='/private/tmp')
         cls.directory = Path(cls.temporary.name).resolve()
         native = (ROOT / 'native/launcher/main.swift').read_text()
-        prefix, separator, _ = native.partition('// Fixed setup actions run relative to this app.')
+        prefix, separator, _ = native.partition('\nfunc run() throws')
         if not separator:
             raise AssertionError('Production launcher function boundary is missing')
         source = cls.directory / 'lease-test.swift'
@@ -223,7 +223,10 @@ do {
         result = self.launch(executable, '--kumo-print-config')
         self.assertEqual(result.returncode, 0, result.stderr)
         config = json.loads(result.stdout)
-        self.assertEqual(config['bundledExtension'], str(extension))
+        self.assertFalse(config['productExtensionLoaded'])
+        self.assertEqual(config['nativeSettings'], 'chrome://settings/kumo')
+        self.assertNotIn('bundledExtension', config)
+        self.assertFalse(any('--load-extension' in flag for flag in config['flags']))
         self.assertTrue(Path(config['profile']).resolve().is_relative_to(self.home), config['profile'])
         self.assertFalse(Path(config['profile']).exists())
         self.assertEqual(sorted(str(p.relative_to(self.base)) for p in self.base.rglob('*')), before)
@@ -242,7 +245,7 @@ do {
                 result = self.launch(executable, *arguments)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stdout, '')
-                self.assertIn('one Kumo setup action', result.stderr)
+                self.assertIn('one Kumo action', result.stderr)
                 self.assertEqual(list(self.home.iterdir()), [])
 
 

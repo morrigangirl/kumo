@@ -33,7 +33,7 @@ class ReleaseActivation(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.app = Path(self.temporary.name) / 'Kumo.app'
         self.resources = self.app / 'Contents/Resources'
-        (self.resources / 'KumoExtension').mkdir(parents=True)
+        self.resources.mkdir(parents=True)
         self.config = {
             'schemaVersion': 1, 'repository': 'morrigangirl/kumo', 'version': '0.1.0', 'build': '202610190001',
             'feedURL': 'https://github.com/morrigangirl/kumo/releases/latest/download/appcast.xml',
@@ -49,14 +49,14 @@ class ReleaseActivation(unittest.TestCase):
     def write_fixture(self):
         (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps(self.info))
         (self.resources / 'kumo-update-config.json').write_text(json.dumps(self.policy))
-        (self.resources / 'KumoExtension/build-info.json').write_text(json.dumps(self.build))
+        (self.resources / 'kumo-build-info.json').write_text(json.dumps(self.build))
 
     def activate(self, notarize):
         with patch.object(signing.runpy, 'run_path', return_value={
                 'load_config': lambda: self.config, 'validate_public_model_scope': release.validate_public_model_scope}):
             signing.configure_release_updater(self.app, notarize)
         return (json.loads((self.resources / 'kumo-update-config.json').read_text()),
-                json.loads((self.resources / 'KumoExtension/build-info.json').read_text()))
+                json.loads((self.resources / 'kumo-build-info.json').read_text()))
 
     def test_developer_id_without_notarization_keeps_updates_disabled(self):
         policy, build = self.activate(False)
@@ -74,7 +74,7 @@ class ReleaseActivation(unittest.TestCase):
         self.build['phishingProtection'] = {'included': True, 'localDevelopmentOnly': True}
         self.write_fixture()
         paths = [self.app / 'Contents/Info.plist', self.resources / 'kumo-update-config.json',
-                 self.resources / 'KumoExtension/build-info.json']
+                 self.resources / 'kumo-build-info.json']
         before = [path.read_bytes() for path in paths]
         for notarize in [False, True]:
             with self.subTest(notarize=notarize), self.assertRaisesRegex(RuntimeError, 'localDevelopmentOnly=true'):

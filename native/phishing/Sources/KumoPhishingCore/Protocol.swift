@@ -1,12 +1,14 @@
 import Foundation
 
 public enum HostProtocol {
-    public static let allowedOrigin = "chrome-extension://eldkgppmnhligdekahicdcdndcoongio/"
+    public static let browserChannelArgument = "--browser-stdio"
     public static let maximumFrameBytes = 256 * 1024
     public static let maximumTextCharacters = 32_768
 
     public static func authorized(arguments: [String]) -> Bool {
-        arguments.count == 2 && arguments[1] == allowedOrigin
+        // The source-built browser owns the inherited stdio pipes. No
+        // extension origin, resource path, model path or executable is accepted.
+        arguments.count == 2 && arguments[1] == browserChannelArgument
     }
 
     public static func readFrame(from handle: FileHandle) throws -> Data? {

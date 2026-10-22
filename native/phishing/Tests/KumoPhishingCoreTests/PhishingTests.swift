@@ -11,14 +11,14 @@ final class PhishingTests: XCTestCase {
         try HostProtocol.Request(data: JSONSerialization.data(withJSONObject: object))
     }
 
-    func testCallerRequiresExactOriginAndNoExtraArguments() {
-        XCTAssertTrue(HostProtocol.authorized(arguments: ["host", HostProtocol.allowedOrigin]))
-        for origin in ["", "https://example.com/", HostProtocol.allowedOrigin + "evil", HostProtocol.allowedOrigin.uppercased(),
-                       "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"] {
-            XCTAssertFalse(HostProtocol.authorized(arguments: ["host", origin]))
+    func testCallerRequiresExactBrowserPipeModeAndNoExtraArguments() {
+        XCTAssertTrue(HostProtocol.authorized(arguments: ["host", HostProtocol.browserChannelArgument]))
+        for mode in ["", "https://example.com/", HostProtocol.browserChannelArgument + "evil", HostProtocol.browserChannelArgument.uppercased(),
+                     "chrome-extension://eldkgppmnhligdekahicdcdndcoongio/", "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/", "--resources"] {
+            XCTAssertFalse(HostProtocol.authorized(arguments: ["host", mode]))
         }
         XCTAssertFalse(HostProtocol.authorized(arguments: ["host"]))
-        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", HostProtocol.allowedOrigin, "--resources", "/tmp"]))
+        XCTAssertFalse(HostProtocol.authorized(arguments: ["host", HostProtocol.browserChannelArgument, "--resources", "/tmp"]))
     }
 
     func testBasicTokensMatchUncasedBERTSemantics() throws {
