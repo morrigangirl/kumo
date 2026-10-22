@@ -134,7 +134,7 @@ async function run() {
     const {chromium} = await import(path.join(root, '.cache/qa/node_modules/playwright-core/index.mjs'));
     phase('launch-isolated-native-browser');
     context = await chromium.launchPersistentContext(profile, {executablePath: app.executable, headless: process.env.KUMO_QA_HEADFUL !== '1', chromiumSandbox: true, timeout: 90000, ignoreDefaultArgs: ['--disable-extensions'],
-      env: environment, viewport: {width: 1280, height: 900}, args: ['--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain', '--password-store=basic', '--no-proxy-server', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1']});
+      env: environment, viewport: {width: 1280, height: 900}, args: ['--no-first-run', '--no-default-browser-check', '--disable-sync', '--use-mock-keychain', '--password-store=basic', '--no-proxy-server', '--host-resolver-rules=MAP * ^NOTFOUND, EXCLUDE 127.0.0.1']});
     context.setDefaultTimeout(20000);
     const watch = page => {
       page.on('pageerror', error => report.errors.push(error.message.slice(0, 2000)));

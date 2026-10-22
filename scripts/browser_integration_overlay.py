@@ -194,9 +194,8 @@ def transform(inputs, native):
         "chrome/browser/kumo/protection/kumo_protection_service.h"),
         '  DCHECK(profile);\n\n  ChromeNavigationUIData* chrome_navigation_ui_data =',
         '  DCHECK(profile);\n  // '+MARKER+'\n  if (auto throttle = kumo::CreateProtectionThrottle(profile))\n    result.push_back(std::move(throttle));\n\n  ChromeNavigationUIData* chrome_navigation_ui_data ='))
-    edit("chrome/browser/chrome_content_browser_client.cc", lambda t: once(t,
-        '  DCHECK(profile);\n\n#if BUILDFLAG(IS_ANDROID)\n  auto [client_data_header, unused_is_custom_tab] =',
-        '  DCHECK(profile);\n  // '+MARKER+': keepalive requests use the same native domain gate.\n  if (auto throttle = kumo::CreateProtectionThrottle(profile))\n    result.push_back(std::move(throttle));\n\n#if BUILDFLAG(IS_ANDROID)\n  auto [client_data_header, unused_is_custom_tab] ='))
+    # Keepalive uses the authoritative final factory gate below. Its upstream
+    # browser throttles assume equivalent renderer throttles handle cancellation.
     def network_admission(t):
         t = include(t, "net/base/net_errors.h")
         t = include(t, "chrome/browser/kumo/network/kumo_network_admission.h")

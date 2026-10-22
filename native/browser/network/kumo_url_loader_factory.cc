@@ -59,8 +59,8 @@ class DomainRequest final : public network::mojom::URLLoader,
     // Priority messages can safely queue on this unconnected pipe while the
     // initial admission is pending; no downstream request has started yet.
     downstream_receiver_ = loader_.BindNewPipeAndPassReceiver();
-    loader_.set_disconnect_handler(base::BindOnce(
-        &DomainRequest::Disconnected, weak_.GetWeakPtr()));
+    // Some valid factories (including WebUI) never bind the optional loader
+    // control receiver. Only loss of the response-client pipe is an abort.
     client_.set_disconnect_handler(base::BindOnce(
         &DomainRequest::ClientDisconnected, weak_.GetWeakPtr()));
   }

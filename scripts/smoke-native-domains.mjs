@@ -120,7 +120,7 @@ function extensionFixture(unlistedOrigin, listedOrigin) {
     action: {type: 'redirect', redirect: {url: `${destination === 'listed' ? listedOrigin : unlistedOrigin}/resource?case=dnr-${destination}`}},
     condition: {urlFilter: `|${unlistedOrigin}/dnr/source?case=dnr-${destination}|`, resourceTypes: ['xmlhttprequest']}}));
   return {manifest: {manifest_version: 3, name: 'Kumo owned DNR redirect fixture', version: '1.0',
-    permissions: ['declarativeNetRequest'], host_permissions: [`http://${allowedHost}/*`, `http://${listedHost}/*`],
+    permissions: ['declarativeNetRequest'], host_permissions: ['http://127.0.0.1/*', `http://${allowedHost}/*`, `http://${listedHost}/*`],
     background: {service_worker: 'background.js'},
     declarative_net_request: {rule_resources: [{id: 'qa_redirect', enabled: true, path: 'rules.json'}]}}, rules};
 }
@@ -140,6 +140,7 @@ async function selfTest() {
   for (const value of [{outcome:'timeout'}, {outcome:'rejected',errorName:'TimeoutError',timedOut:true}, {outcome:'rejected',errorName:'SecurityError'}]) assert(!blocked(value));
   for (const kind of ['dedicated','shared','service']) new Script(workerSource(kind, {'service-import-control':'http://127.0.0.1:12345/import.js?case=service-import-control'}));
   const fixture = extensionFixture('http://unlisted.kumo-qa.invalid:12345', 'http://blocked.kumo-qa.invalid:12345');
+  assert.deepEqual(fixture.manifest.host_permissions, ['http://127.0.0.1/*', `http://${allowedHost}/*`, `http://${listedHost}/*`], 'DNR redirect needs both the exact synthetic initiator and request hosts');
   assert.equal(fixture.rules.length, 2); assert.equal(fixture.rules[1].action.redirect.url, 'http://blocked.kumo-qa.invalid:12345/resource?case=dnr-listed');
   const rewritePattern=new RegExp(`^${escaped('http://127.0.0.1:12345')}/cdp-rewrite\\?case=(cdp-rewrite-control|cdp-rewrite-listed)$`);
   assert(rewritePattern.test('http://127.0.0.1:12345/cdp-rewrite?case=cdp-rewrite-control'));

@@ -61,6 +61,20 @@ function allowedOwnedPage(value, origins, extensionId) {
     return origins.includes(url.origin);
   } catch { return false; }
 }
+const blockedErrorDocument = 'chrome-error://chromewebdata/';
+function expectedBlockedNavigationCandidate(page, value, scope, now = Date.now()) {
+  if (!scope || scope.page !== page || now > scope.expiresAt) return false;
+  try {
+    const target = new URL(scope.target);
+    if (target.protocol !== 'http:' || target.hostname !== blockedHost || !target.port ||
+        target.pathname !== '/main' || target.search || target.hash || target.username || target.password) return false;
+    return value === scope.target || value === blockedErrorDocument;
+  } catch { return false; }
+}
+function expectedBlockedFrameMatches(frame, scope, now = Date.now()) {
+  return frame?.id === scope.frameId && frame.unreachableUrl === scope.target &&
+    expectedBlockedNavigationCandidate(scope.page, frame.url, scope, now);
+}
 async function ownedBrowserChildren(browserPid, app) {
   const {stdout} = await execute('/bin/ps', ['-ww','-axo','pid=,ppid=,lstart=,comm='], {env:{PATH:'/usr/bin:/bin',LC_ALL:'C',LANG:'C'}});
   return stdout.split('\n').map(line => line.trim().replace(/\s+/g, ' ')).filter(line => {
@@ -189,6 +203,18 @@ async function selfTest() {
   for (const invalid of ['0\n/devtools/browser/owned', '65536\n/devtools/browser/owned', '9222\nws://remote.invalid/target', '9222\n/devtools/page/not-browser']) assert.throws(() => ownedCDPEndpoint(invalid));
   assert(allowedOwnedPage('chrome://kumo-new-tab/', ['http://127.0.0.1:1234'], 'fixture'));
   for (const value of ['https://example.com/', 'chrome://settings/passwords', 'chrome://kumo-new-tab.evil/', 'http://user:secret@127.0.0.1:1234/']) assert(!allowedOwnedPage(value, ['http://127.0.0.1:1234'], 'fixture'));
+  const probesPage = {}, otherPage = {};
+  const blockedScope = {page:probesPage,target:`http://${blockedHost}:1234/main`,frameId:'owned-main-frame',expiresAt:1000};
+  for (const value of [blockedScope.target,blockedErrorDocument]) assert(expectedBlockedNavigationCandidate(probesPage,value,blockedScope,500));
+  assert(!expectedBlockedNavigationCandidate(otherPage,blockedErrorDocument,blockedScope,500));
+  assert(!expectedBlockedNavigationCandidate(probesPage,blockedErrorDocument,undefined,500));
+  assert(!expectedBlockedNavigationCandidate(probesPage,blockedErrorDocument,blockedScope,1001));
+  for (const value of [`http://${blockedHost}:1234/other`,`http://${blockedHost}:5678/main`,'chrome-error://other/','https://example.com/']) assert(!expectedBlockedNavigationCandidate(probesPage,value,blockedScope,500));
+  assert(!expectedBlockedNavigationCandidate(probesPage,blockedErrorDocument,{...blockedScope,target:'https://example.com/main'},500));
+  const failedFrame = {id:blockedScope.frameId,url:blockedErrorDocument,unreachableUrl:blockedScope.target};
+  assert(expectedBlockedFrameMatches(failedFrame,blockedScope,500));
+  for (const frame of [{...failedFrame,id:'other-frame'},{...failedFrame,unreachableUrl:`http://${blockedHost}:5678/main`},{...failedFrame,unreachableUrl:undefined},{...failedFrame,url:'https://example.com/'}]) assert(!expectedBlockedFrameMatches(frame,blockedScope,500));
+  assert(!expectedBlockedFrameMatches(failedFrame,blockedScope,1001));
   assert(sameProcessIdentity('42 1 Wed Oct 21 21:00:00 2026 owned-helper', '42 2 Wed Oct 21 21:00:00 2026 owned-helper'));
   assert(!sameProcessIdentity('42 1 Wed Oct 21 21:00:01 2026 owned-helper', '42 2 Wed Oct 21 21:00:00 2026 owned-helper'));
   const directory = await mkdtemp('/private/tmp/kns-');
@@ -200,7 +226,7 @@ async function selfTest() {
     const extension = path.join(directory, 'extension'); await writeSyntheticExtension(extension);
     assert.equal(JSON.parse(await readFile(path.join(extension, 'manifest.json'), 'utf8')).manifest_version, 3);
   } finally { await rm(directory, {recursive: true, force: true}); }
-  console.log(JSON.stringify({passed: true, checks: ['canonical local domain snapshot', 'restricted action allowlist', 'sensitive fixture semantics', 'real Foundation disposable-home lookup', 'Claude exception requires proven owned home', 'ordinary MV3 fixture manifest'], browserLaunched: false, providerSetupPerformed:false}));
+  console.log(JSON.stringify({passed: true, checks: ['canonical local domain snapshot', 'restricted action allowlist', 'sensitive fixture semantics', 'real Foundation disposable-home lookup', 'Claude exception requires proven owned home', 'ordinary MV3 fixture manifest', 'expected blocked navigation permit is page/target/frame scoped, expiring and requires exact unreachableUrl'], browserLaunched: false, providerSetupPerformed:false}));
 }
 const SAFE_ACTIONS = new Set(['preferences.set', 'preferences.import', 'preferences.export', 'phishing.setEnabled', 'malware.setEnabled', 'agents.grant', 'agents.revoke', 'agents.refresh']);
 
@@ -223,6 +249,7 @@ async function run() {
   const environment = isolatedEnvironment(home, output); let context, browser, browserProcess, browserIdentity, connection, before, runtimeSocketPath;
   const browserErrors = [];
   let preserve = false, fixtureExtensionId;
+  const expectedBlockedNavigations = new WeakMap();
   const errors = [], blockedHits = [], external = [], sockets = new Set();
   let originA, originB;
   const phase = name => { if (preserve && name !== 'owned-cleanup') throw new Error('Unexpected navigation; owned user session preserved'); report.phases.push({name, at: new Date().toISOString()}); console.log(JSON.stringify({nativeBrowserPhase: name, mode: report.mode})); };
@@ -274,7 +301,10 @@ async function run() {
     report.launch = {pid:browserProcess.pid, identity:browserIdentity, noDefaults:true, sdkSourceSha256:sha(sdkSource), sandbox:true, loopbackCDP:true, mockKeychain:true};
     context.setDefaultTimeout(20000);
     const watchPage = page => page.on('framenavigated', frame => {
-      if (frame === page.mainFrame() && !allowedOwnedPage(frame.url(), [originA,originB], fixtureExtensionId)) { preserve=true; report.unexpectedNavigation=true; }
+      if (frame !== page.mainFrame() || allowedOwnedPage(frame.url(), [originA,originB], fixtureExtensionId)) return;
+      const scope = expectedBlockedNavigations.get(page);
+      if (expectedBlockedNavigationCandidate(page,frame.url(),scope)) { scope.candidates.add(frame.url()); return; }
+      preserve=true; report.unexpectedNavigation=true;
     });
     context.pages().forEach(watchPage); context.on('page', watchPage);
     context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
@@ -508,8 +538,33 @@ async function run() {
     report.domainResults = networkResults; report.listedServerHits = [...blockedHits];
     await writeFile(path.join(output,'domain-network-results.json'),JSON.stringify({networkResults,listedServerHits:blockedHits,protection:(await status()).protection},null,2)+'\n',{mode:0o600});
     assert.equal(networkResults.subresource,true,'A listed-host subresource fetch must reject'); assert.equal(networkResults.redirect,true,'A listed redirect destination must reject'); assert.equal(networkResults.worker,'blocked'); assert.equal(networkResults.websocket,'error');
-    await assert.rejects(probes.goto(blocked+'/main'), /ERR_BLOCKED_BY_CLIENT/);
-    await pause(200); assert.deepEqual(blockedHits, [], 'No listed destination may reach the local HTTP or WebSocket server');
+    const blockedTarget = blocked+'/main';
+    const blockedSession = await context.newCDPSession(probes);
+    const beforeBlocked = (await bounded(()=>blockedSession.send('Page.getFrameTree'),'Owned probes main-frame metadata',2000)).frameTree.frame;
+    assert(!preserve, 'Unexpected navigation; owned user session preserved');
+    const blockedScope = {page:probes,target:blockedTarget,frameId:beforeBlocked.id,expiresAt:Date.now()+15000,candidates:new Set()};
+    expectedBlockedNavigations.set(probes,blockedScope);
+    try {
+      await assert.rejects(bounded(()=>probes.goto(blockedTarget),'Expected listed main-navigation rejection',5000), /ERR_BLOCKED_BY_CLIENT/);
+      const failedFrame = (await bounded(()=>blockedSession.send('Page.getFrameTree'),'Expected blocked main-frame metadata',2000)).frameTree.frame;
+      assert(expectedBlockedFrameMatches(failedFrame,blockedScope),'Blocked error document must identify the exact expected unreachable URL and main frame');
+      assert(!preserve, 'Unexpected navigation; owned user session preserved');
+      await pause(200); assert.deepEqual(blockedHits, [], 'No listed destination may reach the local HTTP or WebSocket server');
+      await bounded(()=>probes.goto(originA),'Restore owned probes origin after expected blocked navigation',5000);
+      const restoredFrame = (await bounded(()=>blockedSession.send('Page.getFrameTree'),'Restored owned main-frame metadata',2000)).frameTree.frame;
+      assert.equal(restoredFrame.id,blockedScope.frameId);
+      assert.equal(new URL(restoredFrame.url).origin,originA);
+      assert(!restoredFrame.unreachableUrl);
+      assert(!preserve, 'Unexpected navigation; owned user session preserved');
+      report.expectedBlockedNavigation = {pageScoped:true,operationBudgetMilliseconds:15000,error:'ERR_BLOCKED_BY_CLIENT',target:blockedTarget,errorDocumentURL:failedFrame.url,unreachableUrl:failedFrame.unreachableUrl,sameMainFrame:true,observedCandidates:[...blockedScope.candidates],listedServerHits:[],restoredToOwnedOrigin:originA};
+    } catch(error) {
+      preserve=true;
+      report.expectedBlockedNavigationValidationFailed=true;
+      throw error;
+    } finally {
+      expectedBlockedNavigations.delete(probes);
+      await bounded(()=>blockedSession.detach(),'Expected blocked-navigation CDP detach',2000);
+    }
     report.domainResults = networkResults; report.checks.push('Native domain blocking stops main navigation, subresources, redirect destinations, worker fetch and WebSocket before server contact');
     assert.equal((await action('agents.revoke')).ok, true);
     phase('restore-native-phishing-enabled');

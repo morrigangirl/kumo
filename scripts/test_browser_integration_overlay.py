@@ -129,10 +129,18 @@ class PinnedNativeIntegrationTests(unittest.TestCase):
         default = (self.src/'content/public/browser/content_browser_client.cc').read_text()
         self.assertIn('std::move(callback).Run(true); // '+overlay.MARKER, default)
 
-    def test_both_loader_paths_and_transport_admissions_are_hooked(self):
+    def test_navigation_and_transport_admissions_preserve_upstream_keepalive_throttles(self):
+        original = (self.src/'chrome/browser/chrome_content_browser_client.cc').read_text()
+        def keepalive_body(text):
+            function = text[text.index('ChromeContentBrowserClient::CreateURLLoaderThrottlesForKeepAlive('):]
+            return function[:function.index('\n}\n')]
         overlay.apply_overlay(self.src)
         text = (self.src/'chrome/browser/chrome_content_browser_client.cc').read_text()
-        self.assertEqual(text.count('kumo::CreateProtectionThrottle(profile)'), 2)
+        self.assertEqual(text.count('kumo::CreateProtectionThrottle(profile)'), 1)
+        self.assertEqual(keepalive_body(text), keepalive_body(original))
+        self.assertNotIn('kumo::CreateProtectionThrottle', keepalive_body(text))
+        self.assertEqual(text.count('kumo::ProxyDomainURLLoaderFactory('), 1)
+        self.assertIn('builder, factory_override);', text)
         self.assertIn('kumo::AllowNetworkConnection(Profile::FromBrowserContext(context)', text)
         transport = text[text.index('void ChromeContentBrowserClient::WillCreateWebTransport('):]
         self.assertLess(transport.index('protection->ShouldBlock(url)'), transport.index('web_request_api->ProxyWebTransport('))

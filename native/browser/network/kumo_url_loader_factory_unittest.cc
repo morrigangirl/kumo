@@ -39,11 +39,15 @@ class TestLoad final : public network::mojom::URLLoader {
   TestLoad(mojo::PendingReceiver<network::mojom::URLLoader> receiver,
            int32_t id, uint32_t flags, const network::ResourceRequest& resource,
            mojo::PendingRemote<network::mojom::URLLoaderClient> remote,
-           const net::MutableNetworkTrafficAnnotationTag& tag)
+           const net::MutableNetworkTrafficAnnotationTag& tag,
+           bool bind_control = true)
       : request_id(id), options(flags), request(resource), annotation(tag),
-        client(std::move(remote)), receiver_(this, std::move(receiver)) {
-    receiver_.set_disconnect_handler(base::BindOnce(
-        [](bool* closed) { *closed = true; }, &closed));
+        client(std::move(remote)), receiver_(this) {
+    if (bind_control) {
+      receiver_.Bind(std::move(receiver));
+      receiver_.set_disconnect_handler(base::BindOnce(
+          [](bool* closed) { *closed = true; }, &closed));
+    }
   }
   void FollowRedirect(network::HttpRequestHeadersUpdateParams update,
                       const std::optional<GURL>& replacement) override {
@@ -90,8 +94,9 @@ class TestFactory final : public network::mojom::URLLoaderFactory {
       mojo::PendingRemote<network::mojom::URLLoaderClient> client,
       const net::MutableNetworkTrafficAnnotationTag& annotation) override {
     loads.push_back(std::make_unique<TestLoad>(std::move(receiver), request_id,
-        options, request, std::move(client), annotation));
+        options, request, std::move(client), annotation, !drop_loader_control));
   }
+  bool drop_loader_control = false;
   std::vector<std::unique_ptr<TestLoad>> loads;
  private:
   mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
@@ -236,6 +241,21 @@ TEST_F(KumoDomainFactoryTest, ListedInitialURLNeverReachesTerminal) {
   EXPECT_EQ(client_.completions.size(), 1u);
 }
 
+TEST_F(KumoDomainFactoryTest, ListedKeepaliveCompletesWithoutTerminalContact) {
+  network::ResourceRequest request;
+  request.url = GURL("https://blocked.invalid/keepalive");
+  request.keepalive = true;
+  BeginRequest(request);
+  EXPECT_TRUE(terminal_.loads.empty());
+  ASSERT_EQ(checked_.size(), 1u);
+  EXPECT_EQ(checked_[0], request.url);
+  ASSERT_EQ(client_.completions.size(), 1u);
+  EXPECT_EQ(client_.completions[0].error_code, net::ERR_BLOCKED_BY_CLIENT);
+  tasks_.FastForwardBy(base::Seconds(30));
+  EXPECT_TRUE(terminal_.loads.empty());
+  EXPECT_EQ(client_.completions.size(), 1u);
+}
+
 TEST_F(KumoDomainFactoryTest, LatePriorityAfterInitialBlockIsHarmless) {
   Begin(GURL("https://blocked.invalid/start"));
   loader_->SetPriority(net::HIGHEST, 9); tasks_.RunUntilIdle();
@@ -295,8 +315,10 @@ TEST_F(KumoDomainFactoryTest, RequestFieldsHeadersUploadAndAnnotationAreUnchange
   request.request_body->set_contains_sensitive_info(true);
   request.request_body->SetAllowHTTP1ForStreamingUpload(true);
   request.credentials_mode = network::mojom::CredentialsMode::kInclude;
+  request.keepalive = true;
   BeginRequest(request); ASSERT_EQ(terminal_.loads.size(), 1u);
   const auto& load = *terminal_.loads[0];
+  EXPECT_TRUE(load.request.keepalive);
   // Mojo reconstructs the body object, so its pointer identity cannot survive
   // transport. Check every body field and byte before normalizing only that
   // pointer for ResourceRequest's remaining complete field comparison.
@@ -482,6 +504,47 @@ TEST_F(KumoDomainFactoryTest, ResponseBodyMetadataSSLTimingsAndCallbacksAreUncha
   EXPECT_TRUE(ack); EXPECT_EQ(client_.upload, (std::make_pair<int64_t, int64_t>(3, 4)));
   EXPECT_EQ(client_.transfer, 27); ASSERT_EQ(client_.completions.size(), 1u);
   EXPECT_EQ(client_.completions[0], status);
+}
+
+TEST_F(KumoDomainFactoryTest, UnusedControlPipeAllowsDelayedWebUIResponse) {
+  // WebUIURLLoaderFactory drops the unused URLLoader control receiver and
+  // asynchronously serves only URLLoaderClient. Its control-pipe closure is
+  // not a request failure; the response pipe remains authoritative.
+  terminal_.drop_loader_control = true;
+  Begin(GURL("chrome://headless/commands.js"));
+  ASSERT_EQ(terminal_.loads.size(), 1u);
+  EXPECT_TRUE(client_.completions.empty());
+  EXPECT_TRUE(checked_.empty());
+  auto& load = *terminal_.loads[0];
+  auto head = network::mojom::URLResponseHead::New();
+  head->mime_type = "application/javascript";
+  const std::vector<uint8_t> bytes{11, 22, 33, 44};
+  head->content_length = bytes.size();
+  mojo::ScopedDataPipeProducerHandle producer;
+  mojo::ScopedDataPipeConsumerHandle consumer;
+  ASSERT_EQ(mojo::CreateDataPipe(nullptr, producer, consumer), MOJO_RESULT_OK);
+  ASSERT_EQ(producer->WriteAllData(bytes), MOJO_RESULT_OK);
+  producer.reset();
+  tasks_.GetMainThreadTaskRunner()->PostDelayedTask(FROM_HERE, base::BindOnce(
+      [](TestLoad* load, network::mojom::URLResponseHeadPtr head,
+         mojo::ScopedDataPipeConsumerHandle body) {
+        load->client->OnReceiveResponse(std::move(head), std::move(body),
+                                        std::nullopt);
+        load->client->OnComplete(network::URLLoaderCompletionStatus(net::OK));
+      }, base::Unretained(&load), std::move(head), std::move(consumer)),
+      base::Milliseconds(10));
+  tasks_.FastForwardBy(base::Milliseconds(10));
+  ASSERT_EQ(client_.completions.size(), 1u);
+  EXPECT_EQ(client_.completions[0].error_code, net::OK);
+  ASSERT_TRUE(client_.head);
+  EXPECT_EQ(client_.head->mime_type, "application/javascript");
+  EXPECT_EQ(client_.head->content_length, static_cast<int64_t>(bytes.size()));
+  ASSERT_TRUE(client_.body.is_valid());
+  base::span<const uint8_t> read;
+  ASSERT_EQ(client_.body->BeginReadData(MOJO_BEGIN_READ_DATA_FLAG_NONE, read),
+            MOJO_RESULT_OK);
+  EXPECT_EQ(read, base::span<const uint8_t>(bytes));
+  EXPECT_EQ(client_.body->EndReadData(read.size()), MOJO_RESULT_OK);
 }
 
 TEST_F(KumoDomainFactoryTest, NonHTTPFactoryRequestsRetainOriginalBehavior) {
