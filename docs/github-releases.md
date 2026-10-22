@@ -29,12 +29,18 @@ signatures and five published assets passed the recorded verification. See
 Published artifacts and tags remain immutable.
 
 [Kumo 0.2.0, build 202610210004](https://github.com/morrigangirl/kumo/releases/tag/v0.2.0-202610210004)
-is the current published release, from source
+was published from source
 `8329043adc37008a53adcf1c7cbd11c702578a4b`. It provides the browser update ZIP and
 complete notarized Apple installer, plus appcast, provenance manifest, notes and
 checksums. The [production audit](security-audits/2026-10-22/0.2.0-production-release.md)
 records exact publication, tag, six-asset and signed-feed verification. Clean-Mac
 administrator installation remains unqualified.
+
+[Kumo 0.2.1, build 202610220001](https://github.com/morrigangirl/kumo/releases/tag/v0.2.1-202610220001)
+is the current published release. It fixes the native toolbar-menu crash and
+includes the notarized browser update and full Apple installer. The
+[0.2.1 production audit](security-audits/2026-10-22/0.2.1-production-release.md)
+records Apple acceptance, publication and public-download verification.
 
 The examples below document the release construction flow with the 0.2 tuple.
 For future releases use a higher build, the new reviewed commit and fresh output
