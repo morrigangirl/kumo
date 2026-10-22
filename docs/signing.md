@@ -40,9 +40,13 @@ with temporary-path placeholders. It never creates a release staging copy.
 
 The build Mac has a valid **Developer ID Application** identity for Carson Press LLC (`PV65ZWXCWX`) and a configured `notarytool` Keychain profile. Kumo 0.1.0, build 202610190001, completed production signing, Apple notarization, stapling and Gatekeeper verification and was published on October 20, 2026. See the [release validation](security-audits/2026-10-20/production-release.md). No approved Kumo browser-passkey profile is installed; that optional managed capability is separate from the ordinary browser release. The Apple Developer portal, certificates and profiles are never changed by these tools.
 
-The published 0.1.2/build 202610210003 removed Kumo's built-in Apple Passwords integration. The pending native 0.2.0/build 202610210004 keeps that removal and needs its own completed source receipt, validation, signing and notarization before publication. Generic Chromium WebAuthn and the optional managed-entitlement signing workflow below remain; removed SDK probes and password sheets are not release capabilities. Widevine is not included.
+Published [Kumo 0.2.0, build 202610210004](https://github.com/morrigangirl/kumo/releases/tag/v0.2.0-202610210004) retains 0.1.2's removal of built-in Apple Passwords integration. Its source/runtime and production Apple checks are recorded in the [production audit](security-audits/2026-10-22/0.2.0-production-release.md). Generic Chromium WebAuthn, third-party password plugins and the optional managed-entitlement signing workflow below remain; removed SDK probes and password sheets are not release capabilities. Widevine is not included.
 
-The first public binary excludes PhishLang. Kumo 0.1.1 includes the experimental
+The browser and Setup use **Developer ID Application** signatures; the complete public `.pkg` uses **Developer ID Installer**. The unchanged browser has accepted submission `02b9a07f-6b97-410e-aaf8-d327eaee416f`. The repaired Setup003 uses the nested sign-only workflow; it is Developer ID-signed for inclusion in the outer distribution, not separately notarized. Its CDHash is `1f782c36ae03043484f91e3edee8147bb3a71865`; the normal builder and actual full-payload validation through both `/var` and `/private/var` passed, with 617 files each. Apple accepted outer PKG003 submission `bba488a9-2239-4db7-b824-b71c5f3174b7`, with zero errors and 13 archive-unpacking warnings. Its normal signature, stapling, Gatekeeper and independent package-to-update-ZIP checks passed. The exact final artifact and Apple log bindings are in the production audit.
+
+The original a8 browser ZIP remains the source-qualified browser. A normal externally pinned provenance refresh binds unchanged signed ZIP/feed/notes to the final installer-only source commit without re-signing the browser. Earlier accepted Setup and package002 artifacts remain preserved and unpublished because a real `/var`/`/private/var` path-validation defect was found. They are not the final installer. The production audit distinguishes the repaired signed Setup, outermost-container Apple verification, prior archive warnings and target-Mac installation limits. Signing and notarization do not establish administrator installation on a clean or older Mac.
+
+The first public binary excluded PhishLang. Kumo 0.1.1 includes the experimental
 model and helper while retaining domain blocking and ClamAV scanning. The signer
 requires a matching, checkpoint-bound project distribution decision and bundled
 paper attribution before accepting the model's original development metadata for
@@ -208,7 +212,7 @@ Successful static signature verification does not replace launching the exact
 release and checking navigation, helpers/JIT, extensions and Chromium WebAuthn
 on the target macOS version. A chosen password extension and any approved
 managed passkey capability need their own compatibility checks; the removed
-built-in Apple Passwords flow is not part of the pending release.
+built-in Apple Passwords flow is not part of Kumo 0.2.
 
 References:
 

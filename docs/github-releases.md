@@ -20,7 +20,7 @@ key is in the build Mac's login Keychain under `app.kumo.browser.release`; only
 its public key is in [`config/release.json`](../config/release.json). The release
 tools do not export private keys or accept them as command arguments.
 
-## Published history and the pending native release
+## Published history
 
 [Kumo 0.1.2, build 202610210003](https://github.com/morrigangirl/kumo/releases/tag/v0.1.2-202610210003)
 was published on October 21, 2026. Its signed app, notarization, update/archive
@@ -28,11 +28,17 @@ signatures and five published assets passed the recorded verification. See
 [0.1.2 production validation](security-audits/2026-10-21/0.1.2-production-release.md).
 Published artifacts and tags remain immutable.
 
-**0.2.0 / 202610210004 is an unreleased target.** The full native engine build and
-qualification are in progress. Current source implementation and focused tests
-do not establish a completed browser build, notarized installer or successful
-installation on a target Mac. The commands below describe the pending release
-flow and must use the final reviewed, committed source.
+[Kumo 0.2.0, build 202610210004](https://github.com/morrigangirl/kumo/releases/tag/v0.2.0-202610210004)
+is the current published release, from source
+`8329043adc37008a53adcf1c7cbd11c702578a4b`. It provides the browser update ZIP and
+complete notarized Apple installer, plus appcast, provenance manifest, notes and
+checksums. The [production audit](security-audits/2026-10-22/0.2.0-production-release.md)
+records exact publication, tag, six-asset and signed-feed verification. Clean-Mac
+administrator installation remains unqualified.
+
+The examples below document the release construction flow with the 0.2 tuple.
+For future releases use a higher build, the new reviewed commit and fresh output
+paths. Never recreate the published 0.2 tag or overwrite its assets.
 
 Kumo 0.2 moves product controls into native browser Settings and removes the Kumo
 product extension. PhishLang defaults on for new profiles and unset preferences;
@@ -58,11 +64,12 @@ and refuses reused/lower build counters or an ambiguous historical tag.
 
 Update `docs/releases/<version>.md`, finish qualification, and create/push the tag
 at the exact final reviewed commit. Never recreate or retarget a published tag.
-For the pending tuple, those eventual commands are:
+For a future release, set `KUMO_VERSION` and `KUMO_BUILD` to that reviewed
+configuration, then create its new tag once:
 
 ```sh
-git tag -a v0.2.0-202610210004 -m 'Kumo 0.2.0'
-git push origin v0.2.0-202610210004
+git tag -a "v${KUMO_VERSION}-${KUMO_BUILD}" -m "Kumo ${KUMO_VERSION}"
+git push origin "v${KUMO_VERSION}-${KUMO_BUILD}"
 ```
 
 Use an Apple Silicon build Mac with the [source-build prerequisites](source-build.md),
@@ -153,9 +160,8 @@ python3 scripts/build-installer.py \
   --definitions "$KUMO_CLAMAV_DATABASE" \
   --executable "$KUMO_SETUP_BIN/KumoSetup" \
   --output 'dist/installer/v0.2.0-202610210004/Kumo Setup.app' \
-  --sign \
-  --identity 'EXISTING_DEVELOPER_ID_APPLICATION_SHA1' \
-  --notary-profile 'EXISTING_NOTARYTOOL_PROFILE'
+  --sign-for-package \
+  --identity 'EXISTING_DEVELOPER_ID_APPLICATION_SHA1'
 python3 scripts/build-installer-pkg.py \
   --setup-app 'dist/installer/v0.2.0-202610210004/Kumo Setup.app' \
   --output dist/installer/v0.2.0-202610210004/Kumo.pkg \
@@ -167,7 +173,9 @@ python3 scripts/github-release.py with-installer \
   --output dist/github-releases/v0.2.0-202610210004
 ```
 
-`Kumo Setup.app` and its developer ZIP are build intermediates. The public fresh
+`Kumo Setup.app` is a signed nested build intermediate, not separately notarized
+in this flow. `--sign-for-package` creates no standalone ZIP or Apple submission;
+notarization, stapling and Gatekeeper checks apply to the outer distribution. The public fresh
 installation flow is the standard `.pkg`; it installs ordered Cisco components,
 then invokes Kumo's dedicated package helper without a nested Installer session.
 Definitions, scheduled updates and a harmless scan are required for readiness.
@@ -224,8 +232,8 @@ python3 scripts/github-release.py upload \
   --artifacts dist/github-releases/v0.2.0-202610210004 --publish
 ```
 
-This command is not evidence that pending 0.2.0 has been published. Publish only
-after final qualification and notes review. Every stable release has its own
+A command example does not establish publication. For each future release,
+publish only after final qualification and notes review. Every stable release has its own
 `appcast.xml`; GitHub's latest feed URL switches with that complete release.
 Never replace old published bytes, put unsigned downloads in the feed, or use a
 GitHub API response as an appcast. A correction needs a higher build.

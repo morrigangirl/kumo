@@ -8,10 +8,14 @@ the browser in `/Applications/Kumo.app`. The current console account's virus
 definitions and automatic updates must be ready, including a real harmless scan,
 before installation reports success. Kumo must be closed before installation.
 
-The native 0.2.0 build (`202610210004`) and its complete installer are the next
-build target; the examples below identify that target, not an already qualified
-release. Building, signing, expanding, verifying or notarizing a package does not
-install it or prove that installation works on a target Mac.
+[Kumo 0.2.0, build 202610210004](https://github.com/morrigangirl/kumo/releases/tag/v0.2.0-202610210004)
+provides the [complete notarized installer](https://github.com/morrigangirl/kumo/releases/download/v0.2.0-202610210004/Kumo-0.2.0-202610210004-macos-arm64.pkg).
+The [production audit](../../docs/security-audits/2026-10-22/0.2.0-production-release.md)
+records the exact source, native/runtime, Apple and public-release checks.
+Building, signing, expanding, verifying or notarizing a package does not install
+it or establish installation on a clean/older Mac, upgrade/recovery or 8 GB
+hardware qualification. The examples below create fresh local outputs; never
+overwrite a published release asset or reuse its tag/build for a correction.
 
 The payload contains the native Chromium-based browser, the local PhishLang
 model and sandboxed helper, the bundled agent runtime, Cisco ClamAV 1.5.4,
@@ -34,8 +38,11 @@ package. Opening it directly or requesting its retired standalone administrator
 mode fails with guidance to use the standard `.pkg`; there is one privileged
 installation transaction. The application
 needs a **Developer ID Application** identity. The outer standard package needs
-an additional **Developer ID Installer** identity. Each public artifact must pass
-its appropriate notarization, stapling and Gatekeeper checks.
+an additional **Developer ID Installer** identity. Use `--sign-for-package` for
+the nested Setup: it signs and verifies the payload, creates no standalone ZIP
+and does not separately notarize Setup. The outermost standard `.pkg` must pass
+Apple notarization, stapling and Gatekeeper checks before public distribution.
+The browser inside it remains independently signed and notarized.
 
 The standard package uses Cisco's libraries, programs and documentation as
 separate ordered components. They are extracted only after the exact original
@@ -66,47 +73,52 @@ signature verification and usable signed definitions. Packaging does not install
 that prerequisite. Definition freshness is checked against the daily database's
 signed timestamp and the runtime policy's 72-hour limit.
 
-Build the native executable and inspect its reported binary location:
+Build the current native executable in a new local work directory. Set
+`KUMO_RELEASE_APP` to the browser extracted from the exact prepared production
+update ZIP, not a different re-signed copy. Its CodeDirectory hash must match the
+browser later attached to the release. Use your existing identity and notary
+profile; these examples create no credentials or published output.
 
 ```sh
+mkdir -p dist
+KUMO_INSTALLER_WORK=$(mktemp -d "$PWD/dist/installer-review.XXXXXX")
+KUMO_RELEASE_APP='/absolute/path/to/extracted/Kumo.app'
 xcrun swift build --package-path native/installer \
-  --scratch-path build/installer-native -c release --arch arm64
-xcrun swift build --package-path native/installer \
-  --scratch-path build/installer-native -c release --arch arm64 --show-bin-path
-```
-
-After the pending production app exists, create and sign a new Setup payload;
-existing output paths are refused. Use the executable path actually reported by
-Swift if it differs from this example:
-
-```sh
+  --scratch-path "$KUMO_INSTALLER_WORK/native-build" -c release --arch arm64
+KUMO_SETUP_BIN=$(xcrun swift build --package-path native/installer \
+  --scratch-path "$KUMO_INSTALLER_WORK/native-build" -c release --arch arm64 --show-bin-path)
 python3 scripts/build-installer.py \
-  --app dist/production-0.2.0-202610210004/Kumo.app \
+  --app "$KUMO_RELEASE_APP" \
   --definitions "$HOME/Library/Application Support/KumoSecurity/ClamAV/database" \
-  --executable build/installer-native/arm64-apple-macosx/release/KumoSetup \
-  --output "dist/installer-0.2.0-202610210004/Kumo Setup.app" \
-  --sign \
-  --identity 'Developer ID Application: Carson Press LLC (PV65ZWXCWX)' \
-  --notary-profile 'Kumo Notary' \
-  --notary-keychain "$HOME/Library/Keychains/login.keychain-db"
+  --executable "$KUMO_SETUP_BIN/KumoSetup" \
+  --output "$KUMO_INSTALLER_WORK/Kumo Setup.app" \
+  --sign-for-package \
+  --identity 'EXISTING_DEVELOPER_ID_APPLICATION_SHA1'
 ```
+
+The normal nested signer verifies the complete signed payload; its receipt
+truthfully reports `notarized: false`, `nestedPackageOnly: true` and
+`outerPackageNotarizationRequired: true`. That intermediate is not ready for
+independent public distribution. Actual native-temp `/var` and `/private/var`
+verification passed all 617 manifest files for the repaired 0.2 Setup; this does
+not establish administrator installation.
 
 The default vendor input is
 `build/clamav-downloads/clamav-1.5.4.macos.universal.pkg`; `--vendor-package`,
 `--runtime`, `--source-archive` and `--notices` accept explicit input locations.
 The manifest binds regular payload files to SHA-256 hashes and records the
 browser's version, build and CodeDirectory hash. Setup signing preserves nested
-Kumo and Cisco signatures. Its developer ZIP filename derives from the signed
-version and build; the public installation asset is the standard package.
+Kumo and Cisco signatures. Nested signing creates no developer ZIP; the public
+installation asset is the standard package.
 
 Build that package from the signed Setup payload:
 
 ```sh
 python3 scripts/build-installer-pkg.py \
-  --setup-app "dist/installer-0.2.0-202610210004/Kumo Setup.app" \
-  --output dist/Kumo-0.2.0-202610210004-Apple-Silicon.pkg \
+  --setup-app "$KUMO_INSTALLER_WORK/Kumo Setup.app" \
+  --output "$KUMO_INSTALLER_WORK/Kumo.pkg" \
   --identity 'Developer ID Installer: Carson Press LLC (PV65ZWXCWX)' \
-  --notary-profile 'Kumo Notary' \
+  --notary-profile 'EXISTING_NOTARYTOOL_PROFILE' \
   --notary-keychain "$HOME/Library/Keychains/login.keychain-db"
 ```
 
