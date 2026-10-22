@@ -337,6 +337,91 @@ class PublicPackageSnapshot(unittest.TestCase):
         self.assertFalse(self.destination.exists())
 
 
+class CompiledBundleMetadata(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.expanded = Path(self.temp.name)
+        self.components = [{'id': identifier, 'version': '1.5.4', 'file': kind + '.pkg'}
+                           for kind, identifier in PKG.COMPONENTS]
+        self.planned = PKG.distribution_xml(self.components, {'appVersion': '0.2.0'})
+        self.actual = ET.fromstring(self.planned)
+        self.infos = {}
+        for ref in ET.fromstring(self.planned).findall('pkg-ref'):
+            component = self.expanded / ref.text.strip(); component.mkdir()
+            info = ET.Element('pkg-info', {'identifier': ref.attrib['id'], 'version': ref.attrib['version']})
+            ET.SubElement(info, 'bundle-version')
+            self.infos[ref.attrib['id']] = (component, info)
+            generated = ET.SubElement(self.actual, 'pkg-ref', {'id': ref.attrib['id']})
+            ET.SubElement(generated, 'bundle-version')
+        self.component, self.info = self.infos[PKG.PACKAGE_ID]
+        self.summary = self.actual.findall('pkg-ref')[-1].find('bundle-version')
+        self.inventory = [
+            {'id': 'app.kumo.setup', 'path': './Kumo Setup.app', 'CFBundleVersion': '202610210004'},
+            {'id': 'app.kumo.helper', 'path': './Kumo Setup.app/First Helper.app', 'CFBundleVersion': '8078.47'},
+            {'id': 'app.kumo.helper', 'path': './Kumo Setup.app/Last Helper.app', 'CFBundleVersion': '8078.47'},
+        ]
+        for attrs in self.inventory: ET.SubElement(self.info, 'bundle', attrs)
+        # Real productbuild both reorders metadata and deduplicates repeated
+        # identifiers, retaining the final PackageInfo path for that identifier.
+        for attrs in [self.inventory[2], self.inventory[0]]:
+            ET.SubElement(self.summary, 'bundle', {**attrs, 'path': attrs['path'].removeprefix('./')})
+
+    def verify(self):
+        for directory, info in self.infos.values():
+            (directory / 'PackageInfo').write_text(ET.tostring(info, encoding='unicode'))
+        (self.expanded / 'Distribution').write_text(ET.tostring(self.actual, encoding='unicode'))
+        return PKG.verify_distribution(self.expanded, self.planned)
+
+    def test_reordered_last_path_summary_matches_full_inventory(self):
+        self.assertTrue(self.verify()['behaviorVerified'])
+
+    def test_actual_summary_must_have_exact_unique_inventory_ids_paths_and_attributes(self):
+        original = ET.tostring(self.summary)
+        changes = {
+            'missing': lambda e: e.remove(e[0]),
+            'duplicate': lambda e: e.append(ET.fromstring(ET.tostring(e[0]))),
+            'extra': lambda e: ET.SubElement(e, 'bundle', {'id': 'unreviewed', 'path': 'Other.app'}),
+            'earlier-path': lambda e: e[0].set('path', 'Kumo Setup.app/First Helper.app'),
+            'changed-path': lambda e: e[0].set('path', 'Other.app'),
+            'changed-version': lambda e: e[0].set('CFBundleVersion', '999'),
+            'extra-attribute': lambda e: e[0].set('unreviewed', 'yes'),
+            'text': lambda e: setattr(e[0], 'text', 'unreviewed'),
+            'child': lambda e: ET.SubElement(e[0], 'unreviewed'),
+            'root-attribute': lambda e: e.set('unreviewed', 'yes'),
+        }
+        for name, change in changes.items():
+            with self.subTest(name=name):
+                self.summary.clear(); restored = ET.fromstring(original)
+                self.summary.attrib.update(restored.attrib); self.summary.extend(list(restored))
+                change(self.summary)
+                with self.assertRaises(RuntimeError): self.verify()
+
+    def test_duplicate_inventory_ids_must_agree_in_all_nonpath_metadata(self):
+        original = ET.tostring(self.info)
+        changes = {
+            'attribute': lambda e: e.set('CFBundleVersion', '999'),
+            'extra-attribute': lambda e: e.set('extra', 'unreviewed'),
+            'text': lambda e: setattr(e, 'text', 'different'),
+            'child': lambda e: ET.SubElement(e, 'unreviewed'),
+        }
+        for name, change in changes.items():
+            with self.subTest(name=name):
+                restored = ET.fromstring(original)
+                change(restored.findall('bundle')[-1])
+                self.infos[PKG.PACKAGE_ID] = (self.component, restored)
+                with self.assertRaises(RuntimeError): self.verify()
+
+    def test_bundle_normalization_does_not_relax_behavioral_order_or_attributes(self):
+        for change in ['choice-order', 'host-architecture']:
+            with self.subTest(change=change):
+                original = ET.tostring(self.actual)
+                if change == 'choice-order':
+                    choices = self.actual.find('choices-outline'); choices[:] = list(reversed(choices))
+                else: self.actual.find('options').set('hostArchitectures', 'x86_64')
+                with self.assertRaises(RuntimeError): self.verify()
+                self.actual = ET.fromstring(original)
+
+
 @unittest.skipUnless(sys.platform == 'darwin' and Path('/usr/bin/pkgbuild').exists(), 'Apple package tools required')
 class AppleToolsStructureFixture(unittest.TestCase):
     def test_real_unsigned_distribution_expands_without_running_any_script(self):

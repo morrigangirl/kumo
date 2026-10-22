@@ -287,6 +287,30 @@ def xml_signature(element):
             (element.text or '').strip(), tuple(xml_signature(child) for child in element))
 
 
+def bundle_version_signature(element, inventory=False):
+    """Canonicalize only productbuild's bundle-ID metadata map.
+
+    PackageInfo can inventory several same-ID Chromium helpers. productbuild
+    retains the last path for each ID and emits that map in arbitrary order.
+    Duplicate inventory IDs must agree in every other attribute/text/child;
+    generated duplicates and any changed selected path are still rejected.
+    """
+    header = xml_signature(element)[:3]
+    entries, identities = {}, {}
+    for bundle in element:
+        identifier = bundle.attrib.get('id')
+        if bundle.tag != 'bundle' or not identifier or 'path' not in bundle.attrib:
+            raise RuntimeError('Invalid component bundle metadata.')
+        signature = xml_signature(bundle)
+        nonpath = (signature[0], tuple((k, v) for k, v in signature[1] if k != 'path'),
+                   signature[2], signature[3])
+        if identifier in entries:
+            if not inventory or identities[identifier] != nonpath:
+                raise RuntimeError('Ambiguous component bundle metadata.')
+        entries[identifier], identities[identifier] = signature, nonpath
+    return (*header, tuple(entries[identifier] for identifier in sorted(entries)))
+
+
 def verify_distribution(expanded, planned):
     """Allow only productbuild's observed package metadata normalization.
 
@@ -332,7 +356,7 @@ def verify_distribution(expanded, planned):
         # beside the (empty, for our non-version-checked bundles) node.
         if bundles and list(bundles[0]):
             raise RuntimeError('Unexpected version-checked component bundle policy.')
-        expected_bundle = xml_signature(generated_bundle) if bundles else None
+        expected_bundle = bundle_version_signature(generated_bundle, inventory=True) if bundles else None
         bundle_count = 0
         paths = []
         matching = [e for e in refs if e.attrib.get('id') == identifier]
@@ -355,7 +379,7 @@ def verify_distribution(expanded, planned):
             reviewed_children = []
             for child in ref:
                 if child.tag == 'bundle-version':
-                    if xml_signature(child) != expected_bundle:
+                    if bundle_version_signature(child) != expected_bundle:
                         raise RuntimeError('The final package changed component bundle metadata.')
                     bundle_count += 1
                 else:
