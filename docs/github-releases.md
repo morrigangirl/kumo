@@ -37,10 +37,17 @@ records exact publication, tag, six-asset and signed-feed verification. Clean-Ma
 administrator installation remains unqualified.
 
 [Kumo 0.2.1, build 202610220001](https://github.com/morrigangirl/kumo/releases/tag/v0.2.1-202610220001)
-is the current published release. It fixes the native toolbar-menu crash and
+fixes the native toolbar-menu crash and
 includes the notarized browser update and full Apple installer. The
 [0.2.1 production audit](security-audits/2026-10-22/0.2.1-production-release.md)
 records Apple acceptance, publication and public-download verification.
+
+[Kumo 0.3.1, build 202610270002](https://github.com/morrigangirl/kumo/releases/tag/v0.3.1-202610270002)
+is the current published release. It adds the full native RELAY frame, configurable
+perimeter illumination, vertical tabs and opt-in Mission Memory MCP access. Both
+the browser and complete Apple installer are notarized. The
+[0.3.1 production audit](security-audits/2026-10-27/0.3.1-production-release.md)
+records qualification, Apple acceptance and public-download verification.
 
 The examples below document the release construction flow with the 0.2 tuple.
 For future releases use a higher build, the new reviewed commit and fresh output
