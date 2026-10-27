@@ -44,7 +44,7 @@ test('MCP negotiates tools, validates arguments and reports authorization failur
   const initialized = await handler({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
   assert.equal(initialized.result.protocolVersion, '2025-06-18');
   const tools = await handler({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-  assert.equal(tools.result.tools.length, 8);
+  assert.equal(tools.result.tools.length, 11);
   assert.equal(TOOLS.find(tool => tool.name === 'browser_snapshot').annotations.readOnlyHint, true);
   const failed = await handler({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'browser_snapshot', arguments: { tabId: 4 } } });
   assert.equal(failed.result.isError, true);
@@ -60,4 +60,19 @@ test('duplicate browser grants and setup verbs cannot enter the agent protocol',
   assert.throws(() => validateState({enabled: true, allowNewTabs: false, grants: [{tabId: 1, origin: 'https://example.com'}, {tabId: 1, origin: 'https://evil.example'}]}), /Duplicate/);
   for (const action of ['provider-configure', 'agents.connectCodex', 'executeJavaScript', 'state']) assert.throws(() => validateCommand(action, {}), /Unknown/);
   assert.ok(TOOLS.every(tool => !/setup|configure|provider/.test(tool.name)));
+});
+
+const missionId = '38c119bd-24a8-4ad6-9680-930f857e09d1';
+test('Mission Memory is opt-in and independent of live tab authority', () => {
+  const shared = validateState({enabled:false,allowNewTabs:false,grants:[],missions:[missionId]});
+  assert.doesNotThrow(()=>authorize(shared,'missions.read',{missionId}));
+  assert.doesNotThrow(()=>authorize(shared,'missions.list',{}));
+  assert.throws(()=>authorize(shared,'tabs.list',{}),/disabled/);
+  const tabsOnly = validateState({enabled:true,allowNewTabs:true,grants:[]});
+  assert.throws(()=>authorize(tabsOnly,'missions.list',{}),/not been granted/);
+  assert.throws(()=>authorize(shared,'missions.read',{missionId:'48c119bd-24a8-4ad6-9680-930f857e09d1'}),/not been granted/);
+  assert.throws(()=>validateCommand('missions.write',{missionId}),/Unknown/);
+  assert.throws(()=>validateCommand('missions.list',{includePrivate:true}),/Unexpected/);
+  assert.throws(()=>validateState({enabled:false,allowNewTabs:false,grants:[],missions:[missionId,missionId]}),/mission grants/);
+  assert.throws(()=>validateCommand('missions.search',{query:'猫'.repeat(81)}),/query/);
 });

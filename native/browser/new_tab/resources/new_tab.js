@@ -1,7 +1,7 @@
 // Copyright 2026 Kumo authors. All rights reserved.
 import {sendWithPromise} from 'chrome://resources/js/cr.js';
 
-const defaults = {theme:'paper',accent:'#c65b3c',greeting:'A little room to explore.',engine:'duckduckgo',engines:[{id:'duckduckgo',url:'https://duckduckgo.com/?q={searchTerms}'}],shortcuts:[{name:'Apple',url:'https://www.apple.com'},{name:'Wikipedia',url:'https://www.wikipedia.org'},{name:'GitHub',url:'https://github.com'},{name:'YouTube',url:'https://www.youtube.com'}]};
+const defaults = {theme:'relay',accent:'#a78bfa',illumination:'glow',intensity:40,motion:true,greeting:'A little room to explore.',engine:'duckduckgo',engines:[{id:'duckduckgo',url:'https://duckduckgo.com/?q={searchTerms}'}],shortcuts:[{name:'Apple',url:'https://www.apple.com'},{name:'Wikipedia',url:'https://www.wikipedia.org'},{name:'GitHub',url:'https://github.com'},{name:'YouTube',url:'https://www.youtube.com'}]};
 let preferences = defaults;
 const element = id => document.getElementById(id);
 function webURL(value) {
@@ -11,9 +11,12 @@ function webURL(value) {
 }
 function render(value) {
   preferences = {...defaults,...value};
-  const themes = ['paper','midnight','forest','lavender','sand','ocean'];
-  document.documentElement.dataset['theme'] = themes.includes(preferences.theme) ? preferences.theme : 'paper';
+  const themes = ['relay','paper','midnight','forest','lavender','sand','ocean'];
+  document.documentElement.dataset['theme'] = themes.includes(preferences.theme) ? preferences.theme : 'relay';
   if (/^#[0-9a-f]{6}$/i.test(preferences.accent)) document.documentElement.style.setProperty('--accent', preferences.accent);
+  document.body.dataset.light = ['off','glow','pulse'].includes(preferences.illumination) ? preferences.illumination : 'off';
+  document.body.dataset.motion = preferences.motion === false ? 'off' : 'on';
+  document.documentElement.style.setProperty('--intensity', String(Math.max(0, Math.min(100, preferences.intensity ?? 40))/100));
   element('greeting').textContent = typeof preferences.greeting === 'string' ? preferences.greeting.slice(0,100) : defaults.greeting;
   if (typeof preferences.background === 'string' && preferences.background.length < 4000000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(preferences.background)) document.body.style.backgroundImage = `url("${preferences.background}")`;
   element('shortcuts').replaceChildren();

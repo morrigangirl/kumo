@@ -56,7 +56,7 @@ function allowedOwnedPage(value, origins, extensionId) {
     if (url.username || url.password) return false;
     if (url.protocol === 'chrome:') return !url.search && !url.hash &&
       (url.host === 'settings' && url.pathname === '/kumo' ||
-       ['newtab','new-tab-page','kumo-new-tab'].includes(url.host) && url.pathname === '/');
+       ['newtab','new-tab-page','kumo-new-tab','kumo-missions'].includes(url.host) && url.pathname === '/');
     if (url.protocol === 'chrome-extension:') return extensionId && url.host === extensionId && url.pathname === '/qa.html';
     return origins.includes(url.origin);
   } catch { return false; }
@@ -305,6 +305,7 @@ async function run() {
       const scope = expectedBlockedNavigations.get(page);
       if (expectedBlockedNavigationCandidate(page,frame.url(),scope)) { scope.candidates.add(frame.url()); return; }
       preserve=true; report.unexpectedNavigation=true;
+      (report.unexpectedNavigationURLs ??= []).push(frame.url());
     });
     context.pages().forEach(watchPage); context.on('page', watchPage);
     context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
@@ -407,9 +408,28 @@ async function run() {
     };
     phase('native-preferences-and-new-tab');
     await settings.locator('settings-kumo-page #greeting').fill('Owned native runtime QA');
-    await settings.locator('settings-kumo-page #theme').selectOption('forest');
+    await settings.locator('settings-kumo-page #theme').selectOption('relay');
+    await settings.locator('settings-kumo-page select:has(option[value="#7dd3fc"])').selectOption('#7dd3fc');
+    await settings.locator('settings-kumo-page #illumination').selectOption('pulse');
+    await settings.locator('settings-kumo-page #intensity').press('Home');
+    for(let step=0;step<35;++step)await settings.locator('settings-kumo-page #intensity').press('ArrowRight');
+    await settings.locator('settings-kumo-page #motion').uncheck();
     await settings.getByRole('button',{name:'Save appearance',exact:true}).click();
-    await eventually(async()=>{const s=await status();return s.preferences.greeting==='Owned native runtime QA' && s.preferences.theme==='forest'},'Actual Save appearance button persists native preferences');
+    await eventually(async()=>{const s=await status();return s.preferences.greeting==='Owned native runtime QA' && s.preferences.theme==='relay' && s.preferences.accent==='#7dd3fc' && s.preferences.illumination==='pulse' && s.preferences.intensity===35 && s.preferences.motion===false},'Actual Save appearance button persists native preferences');
+    await settings.locator('settings-kumo-page #theme').selectOption('paper');
+    await settings.getByRole('button',{name:'Save appearance',exact:true}).click();
+    await eventually(async()=>(await status()).preferences.theme==='paper','Owned alternate page theme is saved');
+    await settings.getByRole('button',{name:'Activate RELAY frame',exact:true}).click();
+    await eventually(async()=>(await status()).preferences.theme==='relay','RELAY activation restores its native frame after another page theme');
+    await settings.getByRole('button',{name:'Activate RELAY frame',exact:true}).click();
+    assert.equal(await settings.evaluate(()=>chrome.settingsPrivate !== undefined),true);
+    await settings.evaluate(()=>new Promise((resolve,reject)=>chrome.settingsPrivate.setPref('vertical_tabs.enabled',true,'',success=>success ? resolve() : reject(new Error('Owned vertical-tabs preference write failed')))));
+    await settings.evaluate(()=>new Promise((resolve,reject)=>chrome.settingsPrivate.setPref('vertical_tabs.enabled',false,'',success=>success ? resolve() : reject(new Error('Owned horizontal-tabs preference write failed')))));
+    await settings.getByRole('button',{name:'Activate RELAY frame',exact:true}).click();
+    await eventually(()=>settings.evaluate(()=>new Promise(resolve=>chrome.settingsPrivate.getPref('vertical_tabs.enabled',pref=>resolve(pref.value===true)))),'RELAY activates from an existing horizontal layout');
+    report.relayActivation={alternateThemeRestored:true,repeated:true,explicitDefaultWrite:true,existingHorizontalLayout:true};
+    await eventually(async()=>!(await status()).operation?.busy,'Activate native RELAY frame');
+    report.checks.push('Native RELAY Settings persist custom accent, illumination, intensity and disabled motion through actual controls');
     const stable = (await status()).preferences;
     for (const bad of [{greeting:'Must not partially save',unexpected:true}, {shortcuts:[{name:'Unsafe',url:'javascript:alert(1)'}]}, {engine:'custom',engines:[{id:'custom',name:'Unsafe',url:'https://user:secret@example.invalid/?q={searchTerms}'}]}]) {
       assert.equal((await action('preferences.set', bad)).ok, false); assert.deepEqual((await status()).preferences, stable);
@@ -524,6 +544,66 @@ async function run() {
     assert.equal((await action('agents.revoke')).ok, true);
     await assert.rejects(requestBrowser(connection, 'tabs.list', {}), /disabled|revok/);
     report.checks.push('Actual native grant/revoke UI, private browser pipes, agent-only socket, two-origin redirect/stale-grant rejection and password/OTP/payment exclusions');
+    phase('native-mission-memory');
+    assert.equal((await action('agents.revoke')).ok,true);
+    await assert.rejects(requestBrowser(connection,'missions.list',{}),/not been granted/);
+    const memory=await context.newPage(); await memory.goto('chrome://kumo-missions/');
+    await memory.locator('#name').waitFor();
+    const memoryStatus=()=>memory.evaluate(async()=>{
+      const {sendWithPromise}=await import('chrome://resources/js/cr.js');
+      return sendWithPromise('kumoMissions','status',{});
+    });
+    await eventually(async()=>Array.isArray((await memoryStatus()).missions),'Mission Memory native status');
+    assert.deepEqual((await memoryStatus()).sharing.grants,[]);
+    await eventually(()=>memory.evaluate(()=>document.body.dataset.motion==='off' && document.documentElement.style.getPropertyValue('--accent')==='#7dd3fc'),'Mission panel receives saved appearance');
+    await memory.locator('#name').fill('Owned shared mission');
+    await memory.locator('#notes').fill('<script>Untrusted saved text</script>');
+    await memory.locator('#nextStep').fill('Compare the owned fixture sources');
+    await memory.getByRole('button',{name:'Save memory',exact:true}).click();
+    await eventually(async()=>(await memoryStatus()).missions.length===1 && !!await memory.locator('#id').inputValue(),'Save first native mission');
+    const savedId=(await memoryStatus()).missions[0].id;
+    await memory.locator('details').filter({has:memory.locator('#tabs')}).locator('summary').click();
+    await memory.locator('#tabs input').first().check();
+    await memory.getByRole('button',{name:'Leave this here',exact:true}).click();
+    await eventually(async()=>(await memoryStatus()).missions[0].sources.length===1 && await memory.getByRole('button',{name:'＋ New mission',exact:true}).isEnabled(),'Native source checkpoint');
+    await memory.getByRole('button',{name:'＋ New mission',exact:true}).click();
+    await memory.locator('#name').fill('Owned private mission');
+    await memory.locator('#notes').fill('Private research stays local');
+    await memory.getByRole('button',{name:'Save memory',exact:true}).click();
+    await eventually(async()=>(await memoryStatus()).missions.length===2,'Save private mission');
+    const privateId=(await memoryStatus()).missions.find(m=>m.name==='Owned private mission').id;
+    await memory.locator('#sharing > summary').click();
+    await memory.locator('#share-list label').filter({hasText:'Owned shared mission'}).locator('input').check();
+    await memory.getByRole('button',{name:'Share selected missions',exact:true}).click();
+    await eventually(async()=>(await memoryStatus()).sharing.grants.length===1,'Explicit mission sharing');
+    const visibleMissions=await requestBrowser(connection,'missions.list',{});
+    assert.deepEqual(visibleMissions.missions.map(m=>m.id),[savedId]);
+    const saved=await requestBrowser(connection,'missions.read',{missionId:savedId});
+    assert.equal(saved.mission.notes,'<script>Untrusted saved text</script>');
+    assert.equal(saved.mission.sources.length,1);
+    for(const source of saved.mission.sources){const url=new URL(source.url);assert.equal(url.search,'');assert.equal(url.hash,'');assert.equal(url.hostname,'127.0.0.1');}
+    assert.equal((await requestBrowser(connection,'missions.search',{query:'private'})).missions.length,0);
+    await assert.rejects(requestBrowser(connection,'missions.read',{missionId:privateId}),/not been granted/);
+    await assert.rejects(requestBrowser(connection,'tabs.list',{}),/disabled/);
+    await memory.locator('#missions button').filter({hasText:'Owned shared mission'}).click();
+    await memory.locator('#notes').fill('Unsaved local edit');
+    await memory.locator('#missions button').filter({hasText:'Owned private mission'}).click();
+    assert.equal(await memory.locator('#id').inputValue(),savedId);
+    await memory.getByRole('button',{name:'Discard edits',exact:true}).click();
+    const pagesBeforeResume=new Set(context.pages());
+    const pageCount=pagesBeforeResume.size;
+    await memory.getByRole('button',{name:'Resume saved tabs',exact:true}).click();
+    await eventually(async()=>context.pages().length===pageCount+1,'Restore saved source in background');
+    const resumedPage=context.pages().find(page=>!pagesBeforeResume.has(page));
+    await resumedPage.waitForURL(saved.mission.sources[0].url);
+    await memory.bringToFront();
+    await memory.getByRole('button',{name:'Turn sharing off',exact:true}).click();
+    await eventually(async()=>(await memoryStatus()).sharing.grants.length===0,'Revoke mission sharing');
+    await assert.rejects(requestBrowser(connection,'missions.read',{missionId:savedId}),/not been granted/);
+    await memory.screenshot({path:path.join(output,'mission-memory.png'),fullPage:true});
+    report.missionMemory={savedId,privateId,readOnly:true,defaultOff:true,tabAccessIndependent:true};
+    report.checks.push('Native Mission Memory saves notes and selected sanitized sources, protects dirty edits, restores background tabs and exposes only explicitly shared missions through read-only MCP');
+    report.checks.push('Native mission revoke blocks further reads while live tab access remains disabled');
     phase('native-domain-network-admission');
     const probes = await context.newPage(); await probes.goto(originA);
     const blocked = `http://${blockedHost}:${serverA.address().port}`;
@@ -567,11 +647,26 @@ async function run() {
     }
     report.domainResults = networkResults; report.checks.push('Native domain blocking stops main navigation, subresources, redirect destinations, worker fetch and WebSocket before server contact');
     assert.equal((await action('agents.revoke')).ok, true);
+    // Close the owned HTTP fixtures before re-enabling the experimental classifier.
+    // It may legitimately replace their deliberately suspicious test forms with a warning.
+    for (const page of context.pages()) {
+      try { if ([originA,originB].includes(new URL(page.url()).origin)) await page.close(); } catch (error) { if (!page.isClosed()) throw error; }
+    }
     phase('restore-native-phishing-enabled');
     await settings.bringToFront();await phishingToggle.setChecked(true);
     await eventually(async()=>{const p=(await status()).protection.phishing;return p.enabled===true&&p.available===true&&p.health==='ready'},'Native phishing must be restored ready',180000);
     report.agentFixturePhishingIsolation.restoredOn=true;
     await settings.screenshot({path:path.join(output,'native-settings.png'),fullPage:true});
+    if(process.env.KUMO_QA_FRAME_REVIEW==='1') {
+      assert(headed,'Native frame review requires a headed disposable browser');
+      await ntp.bringToFront();
+      phase('await-owned-native-frame-review');
+      const reviewFile=path.join(output,'native-frame-review.json');
+      report.nativeFrameReview=await eventually(async()=>{
+        try { const review=JSON.parse(await readFile(reviewFile,'utf8')); return review.passed===true ? review : false; }
+        catch(error){if(error.code==='ENOENT')return false;throw error;}
+      },'Bounded native frame review in the owned disposable browser',300000);
+    }
     report.browserErrors = errors; report.externalPageRequestsAborted = [...new Set(external)];
     assert.deepEqual(errors, []); report.passed = true;
   } catch (error) {
@@ -606,6 +701,13 @@ async function run() {
     if (before) { try { report.signatureAfter = await seal(app); assert.deepEqual(report.signatureAfter,before); } catch(error) {report.passed=false;report.signatureError=error.message;} }
     report.finishedAt = new Date().toISOString(); report.disposableProfileRemoved = closed;
     await writeFile(path.join(output,'browser-stderr.log'),browserErrors.join(''),{mode:0o600});
+    if(closed && report.missionMemory){
+      try {
+        const prefs=JSON.parse(await readFile(path.join(profile,'Default/Preferences'),'utf8'));
+        assert(prefs.kumo.missions.some(m=>m.id===report.missionMemory.savedId));
+        report.missionMemory.persistedAfterShutdown=true;
+      } catch(error){report.passed=false;report.memoryPersistenceError=error.message;}
+    }
     if (closed) await rm(short, {recursive:true,force:true});
     else report.preservedRuntime={temporary:short,profile,home,reason:preserve?'Unexpected navigation; user session retained without closing it':'Owned shutdown incomplete; retained for diagnosis'};
     await writeFile(path.join(output,'results.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});

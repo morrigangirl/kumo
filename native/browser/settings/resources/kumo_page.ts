@@ -85,7 +85,11 @@ export class SettingsKumoPageElement extends CrLitElement implements SettingsPlu
   }
   private field(id: string): string { return (this.shadowRoot.getElementById(id) as HTMLInputElement).value; }
   protected async onSaveAppearanceClick() {
-    await this.action('preferences.set', {theme: this.field('theme'), accent: this.field('accent'), greeting: this.field('greeting')});
+    await this.action('preferences.set', {theme: this.field('theme'), accent: this.field('accent'), greeting: this.field('greeting'), illumination: this.field('illumination'), intensity: Number(this.field('intensity')), motion: (this.shadowRoot.getElementById('motion') as HTMLInputElement).checked});
+  }
+  protected onAccentPresetChange(e: Event) {
+    const color = (e.target as HTMLSelectElement).value;
+    if (color) (this.shadowRoot.getElementById('accent') as HTMLInputElement).value = color;
   }
   protected preferences(): KumoStatus { return object(this.state['preferences']); }
   protected engines(): KumoStatus[] { const v = this.preferences()['engines']; return Array.isArray(v) ? v as KumoStatus[] : []; }

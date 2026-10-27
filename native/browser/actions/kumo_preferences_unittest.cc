@@ -47,6 +47,9 @@ TEST_F(KumoPreferencesTest, AppliesValidatedPartialSettingsAndKeepsOtherValues) 
 TEST_F(KumoPreferencesTest, RejectsUnknownFieldsAndInvalidTypesAtomically) {
   RejectWithoutMutation(base::DictValue().Set("theme", "forest").Set("grants", true));
   RejectWithoutMutation(base::DictValue().Set("theme", "unknown"));
+  RejectWithoutMutation(base::DictValue().Set("illumination", "strobe"));
+  RejectWithoutMutation(base::DictValue().Set("intensity", 101));
+  RejectWithoutMutation(base::DictValue().Set("motion", "yes"));
   RejectWithoutMutation(base::DictValue().Set("accent", "#12345z"));
   RejectWithoutMutation(base::DictValue().Set("greeting", true));
   RejectWithoutMutation(base::DictValue().Set("engine", "missing"));
@@ -123,7 +126,7 @@ TEST_F(KumoPreferencesTest, WallpaperAcceptsFixedRasterTypesAndRejectsActiveCont
 
 TEST_F(KumoPreferencesTest, InvalidStoredPreferencesFallBackAndValidUserChoiceWinsMigration) {
   prefs_.SetDict(kPreference, base::DictValue().Set("theme", "bad"));
-  EXPECT_EQ(*Get(&prefs_).FindString("theme"), "paper");
+  EXPECT_EQ(*Get(&prefs_).FindString("theme"), "relay");
   prefs_.ClearPref(kPreference);
   EXPECT_FALSE(ImportLegacy(&prefs_, base::DictValue().Set("grants", true)));
   EXPECT_EQ(prefs_.GetUserPrefValue(kPreference), nullptr);

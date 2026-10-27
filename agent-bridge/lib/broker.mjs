@@ -3,7 +3,7 @@ import {chmod, lstat, unlink} from 'node:fs/promises';
 import {randomUUID, timingSafeEqual} from 'node:crypto';
 import {LineDecoder, authorize, httpOrigin, sendLine, validateState} from './protocol.mjs';
 
-const disabled = () => ({enabled: false, allowNewTabs: false, grants: new Map()});
+const disabled = () => ({enabled: false, allowNewTabs: false, grants: new Map(), missions: new Set()});
 const tokenMatches = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 // The listening socket accepts agents ONLY. Browser authority is an in-process
@@ -86,6 +86,11 @@ export async function startBroker({socketPath, token, requestTimeoutMs = 20000})
               else if (item.action === 'tabs.list') response = {result: (Array.isArray(message.result) ? message.result : []).filter(tab => {
                 try { return state.grants.get(tab.tabId) === httpOrigin(tab.url); } catch { return false; }
               }).map(({tabId, url, title}) => ({tabId, url, title}))};
+              else if (item.action === 'missions.list' || item.action === 'missions.search') {
+                response = {result: {ok: true, missions: (Array.isArray(message.result?.missions) ? message.result.missions : [])
+                  .filter(m => m && state.missions.has(m.id))
+                  .map(({id, name, updatedAt, sourceCount}) => ({id, name, updatedAt, sourceCount}))}};
+              }
               else if (item.action === 'tab.close') response = {result: {closeRequested: item.params.tabId}};
               else response = {result: message.result ?? null};
             } catch (error) { response = {error: {message: error.message}}; }

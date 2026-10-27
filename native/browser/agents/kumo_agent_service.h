@@ -3,6 +3,7 @@
 #define CHROME_BROWSER_KUMO_AGENTS_KUMO_AGENT_SERVICE_H_
 
 #include <map>
+#include <set>
 #include <string>
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
@@ -28,6 +29,9 @@ class KumoAgentService : public base::SupportsUserData::Data {
   void SetGrants(const base::ListValue& grants, bool allow_new_tabs,
                  base::OnceCallback<void(base::DictValue)> callback);
   void Revoke();
+  base::DictValue SetMissionGrants(const base::ListValue& ids);
+  void RevokeMissions();
+  base::DictValue MissionStatus();
   std::string GetRuntimeId() const;
   void TabChanged(content::WebContents* contents, bool destroyed, bool committed = false);
  private:
@@ -47,6 +51,8 @@ class KumoAgentService : public base::SupportsUserData::Data {
   bool Authorized(content::WebContents* contents) const;
   raw_ptr<Profile> profile_;
   std::map<int, std::string> grants_;
+  std::set<std::string> mission_grants_;
+  base::ListValue mission_audit_;
   bool enabled_ = false;
   bool allow_new_tabs_ = false;
   bool connected_ = false;

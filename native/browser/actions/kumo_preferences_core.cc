@@ -18,7 +18,8 @@ namespace kumo::preferences {
 namespace {
 constexpr char kPreference[] = "kumo.start_page";
 constexpr char kDefaults[] = R"({
-"theme":"paper","accent":"#c65b3c","background":"",
+"theme":"relay","accent":"#a78bfa","background":"",
+"illumination":"glow","intensity":40,"motion":true,
 "greeting":"A little room to explore.","engine":"duckduckgo",
 "engines":[
 {"id":"duckduckgo","name":"DuckDuckGo","url":"https://duckduckgo.com/?q={searchTerms}"},
@@ -76,14 +77,18 @@ bool Wallpaper(const std::string& data) {
 }
 std::optional<base::DictValue> Validate(const base::DictValue& input) {
   if (!KnownKeys(input, {"theme", "accent", "background", "greeting",
-                         "engine", "engines", "shortcuts"}))
+                         "engine", "engines", "shortcuts", "illumination", "intensity", "motion"}))
     return std::nullopt;
   auto output = Defaults();
   for (const auto [key, value] : input)
     output.Set(key, value.Clone());
+  const auto* light = output.FindString("illumination");
+  const auto intensity = output.FindInt("intensity");
+  if (!light || (*light!="off" && *light!="glow" && *light!="pulse") ||
+      !intensity || *intensity<0 || *intensity>100 || !output.FindBool("motion")) return std::nullopt;
   const auto* theme = output.FindString("theme");
   const std::set<std::string_view> themes = {
-      "paper", "midnight", "forest", "lavender", "sand", "ocean"};
+      "relay", "paper", "midnight", "forest", "lavender", "sand", "ocean"};
   const auto* accent = output.FindString("accent");
   const auto* background = output.FindString("background");
   const auto* greeting = output.FindString("greeting");

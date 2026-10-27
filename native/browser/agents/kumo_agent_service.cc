@@ -1,6 +1,8 @@
 // Copyright 2026 Kumo authors. All rights reserved.
 #include "chrome/browser/kumo/agents/kumo_agent_service.h"
 #include <array>
+#include "base/time/time.h"
+#include "chrome/browser/kumo/missions/kumo_mission_store.h"
 #include <atomic>
 #include <cmath>
 #include <set>
@@ -56,6 +58,7 @@ std::string PublicURL(const GURL& url) { GURL::Replacements clean; clean.ClearQu
 base::DictValue Failure(std::string_view error) { return base::DictValue().Set("ok", false).Set("error", std::string(error)); }
 
 bool ValidCommand(std::string_view action, const base::DictValue& p) {
+  if (action.starts_with("missions.")) return missions::ValidRequest(action, p);
   std::set<std::string_view> fields;
   if (action == "tabs.list") {}
   else if (action == "tab.open") fields = {"url"};
@@ -198,14 +201,14 @@ void KumoAgentService::Start() {
   }, contents, runtime_id_, ui, weak));
 }
 void KumoAgentService::OnPipeReady(scoped_refptr<AgentPipe> pipe) { pipe_ = std::move(pipe); }
-void KumoAgentService::OnDisconnected() { connected_ = false; enabled_ = false; allow_new_tabs_ = false; grants_.clear(); ++epoch_; error_ = "Browser agent runtime is unavailable. Reinstall Kumo to repair it."; if (pipe_) pipe_->Stop(); pipe_.reset(); }
+void KumoAgentService::OnDisconnected() { mission_grants_.clear(); connected_ = false; enabled_ = false; allow_new_tabs_ = false; grants_.clear(); ++epoch_; error_ = "Browser agent runtime is unavailable. Reinstall Kumo to repair it."; if (pipe_) pipe_->Stop(); pipe_.reset(); }
 void KumoAgentService::OnMessage(base::DictValue message) {
   const auto* type = message.FindString("type"); if (!type) return;
   if (*type == "ready") { connected_ = true; error_.clear(); SendState(); }
   else if (*type == "command") RunCommand(message);
 }
 void KumoAgentService::Send(base::DictValue message) { std::string json; if (pipe_ && base::JSONWriter::Write(message, &json) && json.size() <= kMaxMessage) pipe_->Write(std::move(json)); }
-void KumoAgentService::SendState() { base::ListValue list; for (const auto& [id, origin] : grants_) list.Append(base::DictValue().Set("tabId", id).Set("origin", origin)); Send(base::DictValue().Set("type", "state").Set("enabled", enabled_).Set("allowNewTabs", allow_new_tabs_).Set("grants", std::move(list))); }
+void KumoAgentService::SendState() { base::ListValue missions; for (const auto& id : mission_grants_) missions.Append(id); base::ListValue list; for (const auto& [id, origin] : grants_) list.Append(base::DictValue().Set("tabId", id).Set("origin", origin)); Send(base::DictValue().Set("type", "state").Set("missions", std::move(missions)).Set("enabled", enabled_).Set("allowNewTabs", allow_new_tabs_).Set("grants", std::move(list))); }
 base::DictValue KumoAgentService::GetStatus() { base::ListValue list; for (const auto& [id, origin] : grants_) list.Append(base::DictValue().Set("tabId", id).Set("origin", origin)); return base::DictValue().Set("enabled", enabled_).Set("allowNewTabs", allow_new_tabs_).Set("bridgeConnected", connected_).Set("bridgeError", error_).Set("grants", std::move(list)); }
 bool KumoAgentService::Eligible(content::WebContents* tab) const { return tab && tab->GetBrowserContext() == profile_ && !profile_->IsOffTheRecord() && HTTP(tab->GetLastCommittedURL()) && tab->GetLastCommittedURL().host() != "chromewebstore.google.com" && !(tab->GetLastCommittedURL().host() == "chrome.google.com" && tab->GetLastCommittedURL().path().starts_with("/webstore")) && tab->GetPrimaryMainFrame() && tab->GetPrimaryMainFrame()->IsRenderFrameLive() && !tab->GetController().GetPendingEntry(); }
 content::WebContents* KumoAgentService::FindTab(int id) const { for (auto* browser : GetAllBrowserWindowInterfaces()) if (browser->GetProfile() == profile_) { auto* tabs = browser->GetTabStripModel(); for (int i=0; tabs && i<tabs->count(); ++i) if (TabID(tabs->GetWebContentsAt(i)) == id) return tabs->GetWebContentsAt(i); } return nullptr; }
@@ -218,12 +221,40 @@ void KumoAgentService::SetGrants(const base::ListValue& list, bool allow_new, ba
   grants_=std::move(selected); enabled_=true; allow_new_tabs_=allow_new; ++epoch_; SendState(); std::move(callback).Run(base::DictValue().Set("ok",true));
 }
 void KumoAgentService::Revoke() { enabled_=false; allow_new_tabs_=false; grants_.clear(); ++epoch_; SendState(); }
+base::DictValue KumoAgentService::SetMissionGrants(const base::ListValue& ids) {
+  std::set<std::string> available, selected;
+  for (const auto& m : missions::List(profile_->GetPrefs())) available.insert(*m.GetDict().FindString("id"));
+  if (ids.size()>100 || !connected_) return Failure("The agent bridge is not ready.");
+  for (const auto& id : ids) {
+    if (!id.is_string() || !available.contains(id.GetString()) || !selected.insert(id.GetString()).second)
+      return Failure("Review the selected missions and try again.");
+  }
+  mission_grants_ = std::move(selected); SendState();
+  return base::DictValue().Set("ok",true);
+}
+void KumoAgentService::RevokeMissions() { mission_grants_.clear(); SendState(); }
+base::DictValue KumoAgentService::MissionStatus() {
+  base::ListValue ids; for (const auto& id : mission_grants_) ids.Append(id);
+  return base::DictValue().Set("grants",std::move(ids)).Set("audit",mission_audit_.Clone())
+      .Set("connected",connected_).Set("readOnly",true);
+}
 void KumoAgentService::TabChanged(content::WebContents* contents, bool destroyed, bool committed) { if (!grants_.contains(TabID(contents))) return; ++epoch_; if (!destroyed && !committed) return; if (destroyed || !HTTP(contents->GetLastCommittedURL()) || contents->GetPrimaryMainFrame()->GetLastCommittedOrigin().Serialize()!=grants_[TabID(contents)]) { grants_.erase(TabID(contents)); SendState(); } }
 void KumoAgentService::Reply(std::string_view id, base::Value result) { Send(base::DictValue().Set("type","result").Set("id",std::string(id)).Set("result",std::move(result))); }
 void KumoAgentService::Error(std::string_view id, std::string_view error) { Send(base::DictValue().Set("type","result").Set("id",std::string(id)).Set("error",base::DictValue().Set("message",std::string(error)))); }
 void KumoAgentService::RunCommand(const base::DictValue& message) {
   const auto* id=message.FindString("id"); const auto* action=message.FindString("action"); const auto* params=message.FindDict("params");
   if (!id || id->empty() || id->size()>100 || !action || !params || !ValidCommand(*action,*params)) { if (id) Error(*id,"Invalid browser command."); return; }
+  if (action->starts_with("missions.")) {
+    auto result = missions::Read(profile_->GetPrefs(), mission_grants_, *action, *params);
+    if (result.FindBool("ok").value_or(false)) {
+      if (mission_audit_.size() >= 100) mission_audit_.erase(mission_audit_.begin());
+      mission_audit_.Append(base::DictValue().Set("action",*action)
+          .Set("missionId",params->FindString("missionId") ? *params->FindString("missionId") : "")
+          .Set("at",base::Time::Now().InMillisecondsFSinceUnixEpoch()));
+      Reply(*id,base::Value(std::move(result)));
+    } else Error(*id,*result.FindString("error"));
+    return;
+  }
   if (!enabled_) { Error(*id,"Browser control is disabled."); return; }
   if (*action=="tabs.list") { base::ListValue rows; for (const auto& row : GetEligibleTabs()) if (Authorized(FindTab(row.GetDict().FindInt("tabId").value()))) rows.Append(row.Clone()); Reply(*id,base::Value(std::move(rows))); return; }
   if (*action=="tab.open") {

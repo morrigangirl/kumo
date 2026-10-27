@@ -61,6 +61,9 @@ export function httpOrigin(url) {
 }
 
 const actionFields = {
+  'missions.list': [],
+  'missions.search': ['query'],
+  'missions.read': ['missionId'],
   'tabs.list': [],
   'tab.open': ['url'],
   'tab.navigate': ['tabId', 'url'],
@@ -78,6 +81,8 @@ export function validateCommand(action, params = {}) {
   if (Object.keys(params).some(key => !fields.includes(key)) || fields.some(key => !Object.hasOwn(params, key))) {
     throw new Error('Unexpected or missing parameters');
   }
+  if (fields.includes('query') && (typeof params.query !== 'string' || Buffer.byteLength(params.query) > 240)) throw new Error('Invalid search query');
+  if (fields.includes('missionId') && (typeof params.missionId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(params.missionId))) throw new Error('Invalid mission ID');
   if (fields.includes('tabId') && (!Number.isSafeInteger(params.tabId) || params.tabId < 0)) throw new Error('Invalid tab ID');
   if (fields.includes('url')) httpOrigin(params.url);
   if (fields.includes('selector') && (typeof params.selector !== 'string' || !params.selector || params.selector.length > 512)) {
@@ -100,11 +105,17 @@ export function validateState(state) {
     if (grants.has(grant.tabId)) throw new Error('Duplicate tab grant');
     grants.set(grant.tabId, grant.origin);
   }
-  return { enabled: state.enabled, allowNewTabs: state.allowNewTabs, grants };
+  const missions = state.missions ?? [];
+  if (!Array.isArray(missions) || missions.length > 100 || missions.some(id => typeof id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) || new Set(missions).size !== missions.length) throw new Error('Invalid mission grants');
+  return { enabled: state.enabled, allowNewTabs: state.allowNewTabs, grants, missions: new Set(missions) };
 }
 
 export function authorize(state, action, params) {
   validateCommand(action, params);
+  if (action.startsWith('missions.')) {
+    if (!state.missions?.size || (action === 'missions.read' && !state.missions.has(params.missionId))) throw new Error('This Mission Memory access has not been granted in Kumo.');
+    return;
+  }
   if (!state.enabled) throw new Error('Browser control is disabled. Enable it in Kumo settings.');
   if (action === 'tabs.list') return;
   if (action === 'tab.open') {

@@ -24,6 +24,19 @@ MARKER = "KUMO_NATIVE_BROWSER_V1"
 DESTINATION = "chrome/browser/kumo"
 RECORD = DESTINATION + "/integration-manifest.json"
 EXPECTED_SHA256 = {
+    'chrome/browser/ui/views/frame/custom_corners.cc': 'fe24a6e206c08b4b37886999515eebf120e2636b92c9b56f93255ce900e94e84',
+    'chrome/browser/ui/views/location_bar/location_bar_view.cc': '505d75b5e72b93565a9cc1ce7c5499181aa44bb38522ed5a8affe164b604b62a',
+    'chrome/browser/ui/views/toolbar/toolbar_view.cc': 'a471ad9c1b04e1562f98cb1612e5f529cda7ea0c74882d332f3263376833a231',
+    'chrome/browser/ui/views/frame/browser_frame_view_mac.mm': 'de4409e377ec7180306d6eb7eb4745f52927884d0ed2bf0f30e160f38db56efa',
+    'chrome/browser/ui/views/frame/browser_view.cc': 'e7784e609d61fa31faecf410b364b121cd2ff9f84f90a01f6871c2273fbe0656',
+    'chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.cc': '669040691b81c722b150b694bd4804818239fb5cea8e9b71b596b9972e6ccf03',
+    'chrome/browser/themes/theme_service.cc': '8e71adc6136429bf68042107a6a38948fb54bdc8f274b15005760d1d4b1e36f9',
+    'chrome/browser/ui/actions/chrome_action_id.h': '085d4bb655539e8aff78b22c649656ba44fb2e58337162b3877720f90d01d90b',
+    'chrome/browser/ui/side_panel/side_panel_entry_id.h': 'cf1dd421fd0042e8c61ff5e5acd895217210d831681a4ce44a642ef789295b21',
+    'chrome/browser/ui/tabs/tab_strip_prefs.cc': '614dd717e6f28b0ea503156ee37fdbb3c0785180aa4c5dfaefc7ca4e5f63b191',
+    'chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc': '6b3cd1a1933601f9f677dc1dc58a0fc39eefa0e30c273001ec08fb6562b07378',
+    'chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.cc': '331a30be110396c8b6bf2958f9765a9c48f6fd8a74c9405cab9cf19d46eee645',
+
     'content/browser/loader/url_loader_factory_utils.h': 'e08addcc15e67325ad76d564431f3f41a42f4458ac8ea38fef07e65128d5ebef',
     'content/browser/loader/url_loader_factory_utils.cc': 'eb842a491f332820fb44ca91f0871c7d710c9719c24cb9daad4ad41b953766db',
     'chrome/app/settings_strings.grdp': 'ea4b55d209f455f5cd6df6fa4f2ef78ffec9220ecd88f379fa4874cd910d6caa',
@@ -115,7 +128,7 @@ def resource_id(relative):
 
 def generated(native):
     sources = sorted(path for path in native if Path(path).suffix in (".cc", ".mm") and not Path(path).stem.endswith(("_test", "_unittest")))
-    core_sources = ["actions/kumo_preferences_core.cc", "network/kumo_network_admission_wait.cc",
+    core_sources = ["missions/kumo_mission_store.cc", "actions/kumo_preferences_core.cc", "network/kumo_network_admission_wait.cc",
                     "network/kumo_url_loader_factory.cc"]
     require(all(path in sources for path in core_sources), "Required native testable cores are missing")
     sources = [path for path in sources if path not in core_sources]
@@ -124,6 +137,7 @@ def generated(native):
     require(all(path in native for path in ("kumo_browser_api.h", "settings/kumo_settings_handler.cc", "new_tab/kumo_new_tab_ui.cc", "store/kumo_store_helper.cc")), "Required native browser sources are missing")
     deps = ["//base", "//base/version_info", "//chrome/browser:browser_public_dependencies",
             "//chrome/browser/profiles:profile", "//chrome/browser/themes",
+            "//chrome/browser/ui", "//ui/views", "//ui/views/controls/webview",
             "//chrome/browser/ui/browser_window", "//chrome/browser/ui/tabs:tab_strip",
             "//chrome/browser/infobars", "//chrome/browser:resources", "//chrome/common",
             "//extensions/browser", "//extensions/common",
@@ -136,7 +150,7 @@ def generated(native):
     lines = ["# " + MARKER, 'import("//testing/test.gni")', 'assert(is_mac)', 'source_set("headers") {',
              "  public = " + json.dumps(headers), '  public_deps = [ "//base", "//content/public/browser" ]', "}",
              'source_set("core") {', "  sources = " + json.dumps(core_sources),
-             '  public = [ "actions/kumo_preferences.h", "network/kumo_network_admission.h", "network/kumo_url_loader_factory.h" ]',
+             '  public = [ "missions/kumo_mission_store.h", "actions/kumo_preferences.h", "network/kumo_network_admission.h", "network/kumo_url_loader_factory.h" ]',
              '  public_deps = [ "//base" ]',
              '  deps = [ "//components/pref_registry", "//components/prefs", "//mojo/public/cpp/bindings", "//net", "//services/network/public/cpp", "//services/network/public/mojom", "//url" ]', "}",
              'source_set("impl") {', "  sources = " + json.dumps(sources),
@@ -430,6 +444,63 @@ def transform(inputs, native):
     entries = '\n'.join('      <include name="'+name+'" file="'+path+'" type="BINDATA" />' for name,path in resources)
     edit("chrome/browser/browser_resources.grd", lambda t: once(t, '    </includes>',
         '      <!-- '+MARKER+' -->\n'+entries+'\n    </includes>'))
+    edit("chrome/browser/themes/theme_service.cc", lambda t: once(t,
+        'prefs::kBrowserColorScheme,\n      std::to_underlying(ThemeService::BrowserColorScheme::kSystem));',
+        'prefs::kBrowserColorScheme,\n      std::to_underlying(ThemeService::BrowserColorScheme::kDark)); // RELAY'))
+    # Native RELAY chrome and compositor-only window-edge illumination.
+    frame_api = "chrome/browser/kumo/relay/kumo_relay_frame.h"
+    edit("chrome/browser/ui/views/frame/browser_view.cc", lambda t: once(once(
+        include(t, frame_api),
+        '  initialized_ = true;\n}',
+        '  initialized_ = true;\n  kumo::InstallRelayFrame(this);\n}'),
+        '  LayoutSuperclass<views::View>(this);',
+        '  LayoutSuperclass<views::View>(this);\n  kumo::LayoutRelayFrame(this);'))
+    edit("chrome/browser/ui/views/frame/browser_frame_view_mac.mm", lambda t: once(
+        include(t, frame_api),
+        '  const SkColor frame_color =\n      GetFrameColor(BrowserFrameActiveState::kUseCurrent);',
+        '  if (GetBrowserView()->GetIsNormalType() && kumo::UseRelayFrame(GetBrowserView()->browser()->GetProfile())) {\n    canvas->DrawColor(SkColorSetRGB(18, 20, 28));\n    return;\n  }\n  const SkColor frame_color =\n      GetFrameColor(BrowserFrameActiveState::kUseCurrent);'))
+    # Keep Chromium's CustomCornersBackground objects: layout adjusts their
+    # corners, cutouts and hover transforms and explicitly requires that type.
+    edit("chrome/browser/ui/views/frame/custom_corners.cc", lambda t: once(
+        include(t, frame_api),
+        '    ThemedBackground::PaintBackground(',
+        '    if (browser_view().GetIsNormalType() && kumo::UseRelayFrame(browser_view().browser()->GetProfile())) {\n      canvas->DrawColor(std::holds_alternative<ToolbarTheme>(color_choice.color)\n          ? SkColorSetRGB(24, 27, 37) : SkColorSetRGB(18, 20, 28));\n      return;\n    }\n    ThemedBackground::PaintBackground('))
+    edit("chrome/browser/ui/views/location_bar/location_bar_view.cc", lambda t: once(once(
+        include(t, frame_api),
+        '  return ChromeLayoutProvider::Get()->GetCornerRadiusMetric(\n      views::Emphasis::kMaximum, size);',
+        '  return std::min(6, size.height() / 2); // RELAY command field geometry'),
+        '  if (is_popup_mode_) {\n    SetBackground(views::CreateSolidBackground(background_color_));',
+        '  if (!is_popup_mode_ && !high_contrast && kumo::UseRelayFrame(profile_)) {\n    if (!is_caret_visible && !input_in_progress)\n      background_color_ = SkColorSetRGB(12, 15, 23);\n    border_color = SkColorSetA(kumo::RelayAccent(profile_), is_caret_visible ? 230 : 95);\n  }\n  if (is_popup_mode_) {\n    SetBackground(views::CreateSolidBackground(background_color_));'))
+    # RELAY uses Chromium's actual vertical tab strip and native side panel.
+    edit("chrome/browser/ui/actions/chrome_action_id.h", lambda t: once(t,
+        '  E(kActionSidePanelShowAboutThisSite)', '  E(kActionSidePanelShowKumoMissions) \\\n  E(kActionSidePanelShowAboutThisSite)'))
+    edit("chrome/browser/ui/side_panel/side_panel_entry_id.h", lambda t: once(t,
+        '  /* Global Entries */', '  V(kKumoMissions, kActionSidePanelShowKumoMissions, "KumoMissions") \\\n  /* Global Entries */'))
+    edit("chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.cc", lambda t: once(t,
+        '  is_vertical_tabs_enabled_ = new_enabled;\n\n  NotifyModeChanged();',
+        '  // A first explicit preference can equal the registered RELAY default.\n'
+        '  // Do not tear down an already inactive tab strip on a no-op change.\n'
+        '  if (is_vertical_tabs_enabled_ == new_enabled) return;\n'
+        '  is_vertical_tabs_enabled_ = new_enabled;\n\n  NotifyModeChanged();'))
+    edit("chrome/browser/ui/tabs/tab_strip_prefs.cc", lambda t: once(t,
+        'registry->RegisterBooleanPref(prefs::kVerticalTabsEnabled, false);',
+        'registry->RegisterBooleanPref(prefs::kVerticalTabsEnabled, true); // RELAY'))
+    edit("chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc", lambda t: once(
+        include(include(t, "chrome/browser/kumo/relay/kumo_relay_rail.h"),
+            "chrome/browser/profiles/profile.h"),
+        '  gemini_button_ =',
+        '  if (!browser_view->browser()->GetProfile()->IsOffTheRecord() &&\n      !browser_view->browser()->GetProfile()->IsGuestSession())\n    content_area_view_->AddChildView(kumo::CreateRelayRailButton(browser_view->browser()));\n\n  gemini_button_ ='))
+    edit("chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.cc", lambda t:
+        once(once(include(include(t, "chrome/browser/kumo/actions/kumo_preferences.h"),
+            "chrome/browser/ui/views/frame/browser_view.h"),
+            'gfx::Animation::RichAnimationDuration(base::Milliseconds(200))',
+            'gfx::Animation::RichAnimationDuration(base::Milliseconds(160))'),
+            '    animation_.Show();',
+            '    bool motion = true;\n    if (host_view() && host_view()->GetWidget()) {\n      auto* browser_view = BrowserView::GetBrowserViewForNativeWindow(host_view()->GetWidget()->GetNativeWindow());\n      if (browser_view) motion = kumo::preferences::Get(browser_view->browser()->GetProfile()).FindBool("motion").value_or(true);\n    }\n    animation_.SetSlideDuration(motion ? gfx::Animation::RichAnimationDuration(base::Milliseconds(160)) : base::TimeDelta());\n    animation_.Show();'))
+    edit("chrome/browser/ui/webui/chrome_web_ui_configs.cc", lambda t: once(
+        include(t,"chrome/browser/kumo/missions/kumo_missions_ui.h"),
+        '  map.AddWebUIConfig(std::make_unique<kumo::KumoNewTabUIConfig>());',
+        '  map.AddWebUIConfig(std::make_unique<kumo::KumoNewTabUIConfig>());\n  map.AddWebUIConfig(std::make_unique<kumo::KumoMissionsUIConfig>());'))
     # Retire the product extension exceptions, keeping the Store scripting guard.
     spec = importlib.util.spec_from_file_location('_kumo_existing_store_overlay', ROOT/'scripts/extensions_overlay.py')
     old = importlib.util.module_from_spec(spec); spec.loader.exec_module(old)

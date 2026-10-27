@@ -98,3 +98,32 @@ test('agent token cannot authenticate a browser role or publish browser state', 
   agent.send({type: 'state', enabled: true, allowNewTabs: true, grants: []});
   await closed;
 });
+
+test('revoking Mission Memory discards an in-flight read without granting tabs', async t => {
+  const runtime = await setup(t);
+  const browser = privateBrowser(runtime.broker), agent = await connectBroker(runtime);
+  t.after(()=>{browser.close();agent.close();});
+  const missionId='38c119bd-24a8-4ad6-9680-930f857e09d1';
+  browser.send({type:'state',enabled:false,allowNewTabs:false,grants:[],missions:[missionId]});
+  browser.onMessage(command=>{
+    if(command.type!=='command')return;
+    browser.send({type:'state',enabled:false,allowNewTabs:false,grants:[],missions:[]});
+    browser.send({type:'result',id:command.id,result:{notes:'Must never reach the client'}});
+  });
+  await assert.rejects(requestBrowser(agent,'missions.read',{missionId}),/revoked/);
+  await assert.rejects(requestBrowser(agent,'missions.list',{}),/not been granted/);
+});
+
+test('partial revocation removes unshared missions from delayed search results', async t => {
+  const runtime=await setup(t), browser=privateBrowser(runtime.broker), agent=await connectBroker(runtime);
+  t.after(()=>{browser.close();agent.close();});
+  const a='38c119bd-24a8-4ad6-9680-930f857e09d1', b='48c119bd-24a8-4ad6-9680-930f857e09d1';
+  browser.send({type:'state',enabled:false,allowNewTabs:false,grants:[],missions:[a,b]});
+  browser.onMessage(command=>{
+    if(command.type!=='command')return;
+    browser.send({type:'state',enabled:false,allowNewTabs:false,grants:[],missions:[a]});
+    browser.send({type:'result',id:command.id,result:{missions:[{id:a,name:'Allowed',notes:'not metadata'},{id:b,name:'Revoked'}]}});
+  });
+  const result=await requestBrowser(agent,'missions.search',{query:''});
+  assert.deepEqual(result.missions,[{id:a,name:'Allowed'}]);
+});

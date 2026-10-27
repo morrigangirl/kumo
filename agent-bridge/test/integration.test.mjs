@@ -20,14 +20,14 @@ async function fixture(t) {
   return {home,env,child};
 }
 
-test('private browser pipes and stdio MCP exchange eight tools with live revocation',async t=>{
+test('private browser pipes and stdio MCP exchange browser and Mission Memory tools with live revocation',async t=>{
   const f=await fixture(t), browser=f.child('browser-channel'), read=inbox(browser.stdout,new NativeDecoder());
   assert.equal((await read()).type,'ready');
   browser.stdin.write(nativeMessage({type:'state',enabled:true,allowNewTabs:false,grants:[{tabId:12,origin:'https://example.com'}]}));assert.equal((await read()).type,'stateApplied');
   const mcp=f.child('mcp');mcp.stdout.setEncoding('utf8');const next=inbox(mcp.stdout,new LineDecoder());
   const send=message=>mcp.stdin.write(JSON.stringify(message)+'\n');
   send({jsonrpc:'2.0',id:1,method:'initialize',params:{}});assert.equal((await next()).result.serverInfo.name,'kumo-browser');
-  send({jsonrpc:'2.0',id:2,method:'tools/list'});assert.equal((await next()).result.tools.length,8);
+  send({jsonrpc:'2.0',id:2,method:'tools/list'});assert.equal((await next()).result.tools.length,11);
   send({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'browser_snapshot',arguments:{tabId:12}}});
   const command=await read();assert.equal(command.action,'tab.snapshot');
   browser.stdin.write(nativeMessage({type:'result',id:command.id,result:{text:'Visible fixture'}}));assert.deepEqual(JSON.parse((await next()).result.content[0].text),{text:'Visible fixture'});
@@ -38,7 +38,7 @@ test('private browser pipes and stdio MCP exchange eight tools with live revocat
 
 test('MCP discovery cannot start a browser broker, and obsolete extension modes fail',async t=>{
   const f=await fixture(t), mcp=f.child('mcp');mcp.stdout.setEncoding('utf8');const next=inbox(mcp.stdout,new LineDecoder());
-  mcp.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})+'\n');assert.equal((await next()).result.tools.length,8);
+  mcp.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})+'\n');assert.equal((await next()).result.tools.length,11);
   await assert.rejects(lstat(path.join(profileRuntime(profile,f.home),'bridge.sock')),e=>e.code==='ENOENT');
   for(const mode of ['native','install','broker']) await assert.rejects(exec(process.execPath,[CLI_PATH,mode,'--profile',profile],{env:f.env}));
 });

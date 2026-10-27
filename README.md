@@ -16,6 +16,10 @@ The first published release, 0.1.0, used **Chromium 155.0.8059.84**. Source vers
 
 The earlier upstream-binary preview used 155.0.8059.39, behind [Chrome's October 15 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html). The current local source build replaces those older engines. App updates use signed [Kumo GitHub Releases](docs/github-releases.md), with a separate native Sparkle companion. The signed update channel is live for Developer ID-signed, notarized production releases. Apple Development builds keep update checks disabled. The first public binary omitted the experimental PhishLang model and its native helper; domain blocking and ClamAV scanning were included. Version 0.1.1 integrates the model and sandboxed helper with warnings off by default; see [setup, model provenance and limitations](docs/phishing-protection.md).
 
+## RELAY and Mission Memory
+
+Version 0.3.1 adds a native RELAY window frame and vertical tab rail, configurable accent colors, a pulsing perimeter and motion controls. Mission Memory saves selected sources, notes and next steps locally, with separate, session-only, read-only MCP sharing. See [RELAY and Mission Memory](docs/relay-mission-memory.md) for behavior and limits, and [GitHub Releases](https://github.com/morrigangirl/kumo/releases) for available downloads.
+
 ## Run
 
 ```sh

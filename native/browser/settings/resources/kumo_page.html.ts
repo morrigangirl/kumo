@@ -35,15 +35,20 @@ export function getHtml(this: SettingsKumoPageElement) {
         ${this.tabs().map(t => html`<label><input type="checkbox" .checked=${this.selectedTabs.get(t['tabId'] as number) === t['origin']} ?disabled=${this.busy} data-tab-id=${t['tabId']} data-origin=${this.text(t['origin'])} @change="${this.onTabChange}"> ${this.text(t['title'], 'Tab')} · ${this.text(t['origin'])}</label>`)}
         <label><input id="allowNewTabs" type="checkbox"> Also allow new tabs</label>
         <button ?disabled=${this.busy} @click="${this.onGrantClick}">Allow selected tabs</button>
-        <button ?disabled=${this.busy} data-action="agents.revoke" @click="${this.onActionClick}">Revoke all access</button>
+        <button ?disabled=${this.busy} data-action="agents.revoke" @click="${this.onActionClick}">Revoke live tab access</button>
         <p class="muted">Access ends when the browser closes, a tab changes origin, the browser connection ends, or you revoke it. Your AI account remains in its desktop client.</p></section>
-      <section><h2>Start-page appearance</h2>
-        <label>Theme<select id="theme" .value=${this.text(this.preferences()['theme'], 'paper')}>
-          ${['paper','midnight','forest','lavender','sand','ocean'].map(t => html`<option value=${t}>${t}</option>`)}</select></label>
-        <label>Accent<input id="accent" type="color" .value=${this.text(this.preferences()['accent'], '#c65b3c')}></label>
+      <section><h2>RELAY appearance</h2>
+        <p>Your accent follows the browser palette, tab rail and Mission Memory. <a href="chrome://kumo-missions/">Open Mission Memory</a></p>
+        <label>Theme<select id="theme" .value=${this.text(this.preferences()['theme'], 'relay')}>
+          ${['relay','paper','midnight','forest','lavender','sand','ocean'].map(t => html`<option value=${t}>${t}</option>`)}</select></label>
+        <label>Accent<input id="accent" type="color" .value=${this.text(this.preferences()['accent'], '#a78bfa')}></label>
+        <label>Accent preset<select @change="${this.onAccentPresetChange}"><option value="">Custom</option><option value="#a78bfa">Violet</option><option value="#7dd3fc">Ice blue</option><option value="#5eead4">Teal</option><option value="#f9a8d4">Rose</option><option value="#fbbf24">Amber</option></select></label>
+        <label>Illumination<select id="illumination" .value=${this.text(this.preferences()['illumination'], 'glow')}><option value="off">Off</option><option value="glow">Subtle glow</option><option value="pulse">Slow pulse</option></select></label>
+        <label>Glow intensity<input id="intensity" type="range" min="0" max="100" .value=${String(this.preferences()['intensity'] ?? 40)}></label>
+        <label><input id="motion" type="checkbox" .checked=${this.preferences()['motion'] !== false}> Subtle motion (always respects Reduce Motion)</label>
         <label>Greeting<input id="greeting" type="text" maxlength="100" .value=${this.text(this.preferences()['greeting'], 'A little room to explore.')}></label>
         <button ?disabled=${this.busy} @click="${this.onSaveAppearanceClick}">Save appearance</button>
-        <button ?disabled=${this.busy} data-action="appearance.applyTheme" @click="${this.onActionClick}">Apply palette to browser</button>
+        <button ?disabled=${this.busy} data-action="appearance.applyTheme" @click="${this.onActionClick}">Activate RELAY frame</button>
         <label>Local wallpaper<input type="file" accept="image/png,image/jpeg,image/webp" @change="${this.onWallpaperChange}"></label>
         <button ?disabled=${this.busy || !this.wallpaper} @click="${this.onWallpaperApplyClick}">Apply wallpaper</button>
         <button ?disabled=${this.busy} @click="${this.onWallpaperClearClick}">Clear wallpaper</button>
